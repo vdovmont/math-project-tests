@@ -1,0 +1,1320 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MathCore JSON Tester</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --page: #0b1020;
+      --panel: #131a2c;
+      --field: #0d1425;
+      --border: #2b3855;
+      --text: #e8edf7;
+      --muted: #9ba8bf;
+      --accent: #67e8b4;
+      --accent-dark: #143f36;
+      --danger: #ff7d8c;
+      --running: #ffd166;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top left, #172441 0, var(--page) 42rem);
+      color: var(--text);
+      font: 15px/1.5 Inter, ui-sans-serif, system-ui, sans-serif;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 32px auto;
+    }
+
+    header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 20px;
+    }
+
+    h1 { margin: 0; font-size: clamp(24px, 4vw, 38px); letter-spacing: -.03em; }
+    header p { margin: 5px 0 0; color: var(--muted); }
+
+    .status {
+      flex: 0 0 auto;
+      padding: 7px 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      background: var(--panel);
+      font-weight: 700;
+    }
+
+    .status.running { color: var(--running); border-color: #806b35; }
+    .status.success { color: var(--accent); border-color: #2c765f; }
+    .status.failed { color: var(--danger); border-color: #793b49; }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .tab-button {
+      padding: 8px 14px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .tab-button:hover { color: var(--text); background: #17223a; }
+    .tab-button.active { color: var(--accent); border-color: #2c765f; background: var(--accent-dark); }
+    .tab-page { display: none; }
+    .tab-page.active { display: block; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+      gap: 20px;
+    }
+
+    .panel {
+      background: color-mix(in srgb, var(--panel) 94%, transparent);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 18px 60px rgba(0, 0, 0, .22);
+    }
+
+    form { padding: 22px; }
+    h2 { margin: 0 0 18px; font-size: 17px; }
+
+    label {
+      display: block;
+      margin: 0 0 15px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    input, select {
+      display: block;
+      width: 100%;
+      margin-top: 6px;
+      padding: 10px 11px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      outline: none;
+      background: var(--field);
+      color: var(--text);
+      font: inherit;
+    }
+
+    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px #67e8b424; }
+
+    .run-button {
+      width: 100%;
+      margin-top: 5px;
+      padding: 11px 16px;
+      border: 1px solid #42bd8d;
+      border-radius: 9px;
+      background: var(--accent-dark);
+      color: var(--accent);
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .run-button:hover:not(:disabled) { background: #195448; }
+    .run-button.stop-button {
+      border-color: #b94454;
+      background: #481d27;
+      color: #ff9aa7;
+    }
+    .run-button.stop-button:hover:not(:disabled) { background: #652633; }
+    button:disabled { cursor: default; opacity: .55; }
+    .error { min-height: 22px; margin: 12px 0 0; color: var(--danger); }
+
+    .console-panel { min-height: 600px; overflow: hidden; }
+    .console-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .console-header h2 { margin: 0; }
+    .console-actions { display: flex; align-items: center; gap: 12px; }
+    .timing { color: var(--muted); font-size: 12px; }
+
+    #console {
+      height: 545px;
+      margin: 0;
+      padding: 18px;
+      overflow: auto;
+      background: #070c17;
+      color: #d9e4f5;
+      font: 13px/1.6 "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .files-panel { grid-column: 1 / -1; overflow: hidden; }
+    .files-toolbar {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      padding: 15px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .files-toolbar h2 { margin: 0; }
+    .files-toolbar select { margin: 0; padding: 8px 10px; }
+    .small-button {
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--field);
+      color: var(--text);
+      font: inherit;
+      cursor: pointer;
+    }
+    .small-button:hover:not(:disabled) { border-color: var(--accent); }
+    .add-button {
+      padding: 8px 12px;
+      border: 1px solid #42bd8d;
+      border-radius: 8px;
+      background: var(--accent-dark);
+      color: var(--accent);
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .add-button:hover:not(:disabled) { background: #195448; }
+    .danger-button {
+      padding: 8px 12px;
+      border: 1px solid #b94454;
+      border-radius: 8px;
+      background: #481d27;
+      color: #ff9aa7;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .danger-button:hover:not(:disabled) { background: #652633; }
+    .folder-path {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--muted);
+      font: 12px "Cascadia Code", Consolas, monospace;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .file-browser {
+      display: grid;
+      grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+      min-height: 440px;
+    }
+    .file-list {
+      max-height: 520px;
+      overflow: auto;
+      border-right: 1px solid var(--border);
+      background: #0b1120;
+    }
+    .file-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      width: 100%;
+      padding: 10px 14px;
+      border: 0;
+      border-bottom: 1px solid #1c2840;
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .file-item:hover { background: #17223a; }
+    .file-item.active {
+      background: #17493f;
+      box-shadow: inset 3px 0 0 var(--accent);
+      color: #effff9;
+    }
+    .file-item.active:hover { background: #1c594c; }
+    .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .empty-folder { padding: 24px; color: var(--muted); text-align: center; }
+    .json-file-group { border-bottom: 1px solid var(--border); }
+    .json-file-group > summary {
+      padding: 11px 14px;
+      cursor: pointer;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+    .group-select { display: none; width: auto; margin: 0 8px 0 0; vertical-align: -1px; }
+    .result-select { display: none; }
+    .file-list.delete-select-types .group-select { display: inline-block; }
+    .file-list.delete-select-results .result-select { display: block; }
+    .json-file-items { padding: 0 0 8px 18px; }
+    .json-file-items .file-item { border-left: 2px solid var(--border); }
+    .selectable-file-row { display: flex; align-items: stretch; }
+    .selectable-file-row > input { width: auto; margin: 0 8px 0 10px; }
+    .selectable-file-row .file-item { flex: 1; }
+    .file-viewer { min-width: 0; background: #070c17; }
+    .file-viewer-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 15px;
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+    }
+    #file-content {
+      height: 475px;
+      margin: 0;
+      padding: 18px;
+      overflow: auto;
+      color: #d9e4f5;
+      font: 13px/1.6 "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+      white-space: pre;
+    }
+    .file-error { color: var(--danger); }
+
+    .map-panel { overflow: hidden; }
+    .map-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 13px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .map-toolbar h2 { margin: 0; }
+    .map-layout {
+      display: grid;
+      grid-template-columns: minmax(300px, 390px) minmax(0, 1fr);
+      height: 720px;
+    }
+    .route-selector {
+      overflow: auto;
+      padding: 14px;
+      border-right: 1px solid var(--border);
+      background: #0b1120;
+    }
+    .route-group {
+      margin-bottom: 10px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      overflow: hidden;
+      background: var(--panel);
+    }
+    .route-group > summary {
+      padding: 10px 12px;
+      cursor: pointer;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+    .route-group-error { padding: 0 12px 12px; color: var(--danger); }
+    .route-source { padding: 9px 12px 11px; border-top: 1px solid var(--border); }
+    .route-source-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+      cursor: pointer;
+    }
+    .route-source-title input { width: auto; margin: 0; }
+    .route-swatch { width: 18px; height: 4px; border-radius: 4px; flex: 0 0 auto; }
+    .route-choices { margin-left: 24px; }
+    .route-choice {
+      display: flex;
+      align-items: start;
+      gap: 8px;
+      margin: 7px 0 0;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .route-choice input { width: auto; margin: 3px 0 0; }
+    .route-detail { display: block; color: var(--muted); font-size: 11px; }
+    #route-map { width: 100%; height: 100%; background: #d9e1e8; }
+    .map-message { padding: 18px; color: var(--muted); }
+    .leaflet-popup-content { color: #162033; }
+    .route-number-icon { background: transparent; border: 0; }
+    .route-stop-number {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border: 3px solid var(--route-color);
+      border-radius: 50%;
+      background: #fff;
+      color: #101828;
+      box-shadow: 0 2px 7px rgba(0, 0, 0, .35);
+      font: 800 11px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+    }
+
+    dialog {
+      width: min(680px, calc(100% - 32px));
+      max-height: min(720px, calc(100vh - 40px));
+      padding: 0;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--panel);
+      color: var(--text);
+      box-shadow: 0 25px 90px rgba(0, 0, 0, .6);
+    }
+    dialog::backdrop { background: rgba(3, 7, 18, .78); }
+    .dialog-body { padding: 22px; }
+    .dialog-body h2 { margin-bottom: 8px; }
+    .delete-list {
+      max-height: 390px;
+      margin: 16px 0;
+      padding: 12px 12px 12px 32px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #080d18;
+      color: #d8e2f1;
+      font: 12px/1.55 "Cascadia Code", Consolas, monospace;
+      overflow-wrap: anywhere;
+    }
+    .dialog-actions { display: flex; justify-content: end; gap: 10px; }
+    .upload-form label { margin-top: 16px; }
+    .upload-help { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+
+    @media (max-width: 800px) {
+      header { align-items: start; }
+      .layout { grid-template-columns: 1fr; }
+      .console-panel { min-height: 480px; }
+      #console { height: 425px; }
+      .file-browser { grid-template-columns: 1fr; }
+      .file-list { border-right: 0; border-bottom: 1px solid var(--border); }
+      #file-content { height: 380px; }
+      .map-layout { grid-template-columns: 1fr; height: auto; }
+      .route-selector { max-height: 360px; border-right: 0; border-bottom: 1px solid var(--border); }
+      #route-map { height: 520px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>MathCore JSON Tester</h1>
+        <p>Configure, run, and follow sequential JSON tests.</p>
+      </div>
+    </header>
+
+    <nav class="tabs" aria-label="Application sections">
+      <button class="tab-button active" type="button" data-tab="runner-page">Runner</button>
+      <button class="tab-button" type="button" data-tab="files-page">JSON files</button>
+      <button class="tab-button" type="button" data-tab="map-page">Map</button>
+    </nav>
+
+    <section id="runner-page" class="tab-page active">
+      <div class="layout">
+      <section class="panel">
+        <form id="options-form">
+          <h2>Run options</h2>
+          <label>Base URL
+            <input id="base-url" name="base_url" type="url" required>
+          </label>
+          <button id="run-button" class="run-button" type="submit">Start test run</button>
+          <p id="error" class="error" role="alert"></p>
+        </form>
+      </section>
+
+      <section class="panel console-panel">
+        <div class="console-header">
+          <h2>Live progress</h2>
+          <div class="console-actions">
+            <div id="status" class="status">Idle</div>
+            <button id="open-result" class="small-button" type="button" disabled>Open result</button>
+            <span id="timing" class="timing"></span>
+          </div>
+        </div>
+        <pre id="console" aria-live="polite">Waiting for a test run...</pre>
+      </section>
+      </div>
+    </section>
+
+    <section id="files-page" class="tab-page">
+      <section class="panel files-panel">
+        <div class="files-toolbar">
+          <h2>Grouped JSON files</h2>
+          <div class="console-actions">
+            <button id="add-test-type" class="add-button" type="button">Add test type</button>
+            <button id="delete-test-types" class="danger-button" type="button" disabled>Delete test type</button>
+            <button id="delete-test-results" class="danger-button" type="button" disabled>Delete test results</button>
+            <button id="folder-refresh" class="small-button" type="button">Refresh</button>
+          </div>
+        </div>
+        <div class="file-browser">
+          <div id="file-list" class="file-list"></div>
+          <div class="file-viewer">
+            <div class="file-viewer-header">
+              <span id="file-title">Select a file to view it</span>
+              <span id="file-size"></span>
+            </div>
+            <pre id="file-content">Read-only file contents appear here.</pre>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section id="map-page" class="tab-page">
+      <div class="panel map-panel">
+        <div class="map-toolbar">
+          <div>
+            <h2>Route comparison map</h2>
+            <span class="timing">Select routes inside a grouped test name.</span>
+          </div>
+          <button id="routes-refresh" class="small-button" type="button">Refresh routes</button>
+        </div>
+        <div class="map-layout">
+          <div id="route-selector" class="route-selector">
+            <div class="map-message">Loading route groups...</div>
+          </div>
+          <div id="route-map" aria-label="Selected route map"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="upload-dialog">
+    <form id="upload-form" class="dialog-body upload-form">
+      <h2>Add test type</h2>
+      <p>Select a matching input and expected-output JSON file.</p>
+      <label>Input JSON
+        <input id="upload-input" type="file" accept=".json,application/json" required>
+      </label>
+      <p class="upload-help">Filename must end with -input.json.</p>
+      <label>Expected output JSON
+        <input id="upload-output" type="file" accept=".json,application/json" required>
+      </label>
+      <p class="upload-help">Filename must end with -output.json and use the same base name.</p>
+      <p id="upload-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="upload-cancel" class="small-button" type="button">Cancel</button>
+        <button id="upload-confirm" class="add-button" type="submit">Add test type</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="delete-dialog">
+    <div class="dialog-body">
+      <h2>Confirm deletion</h2>
+      <p>Are you sure you want to delete these items?</p>
+      <ul id="delete-list" class="delete-list"></ul>
+      <div class="dialog-actions">
+        <button id="delete-cancel" class="small-button" type="button">Cancel</button>
+        <button id="delete-confirm" class="danger-button" type="button">Delete permanently</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script>
+    const form = document.querySelector('#options-form');
+    const runButton = document.querySelector('#run-button');
+    const statusBadge = document.querySelector('#status');
+    const consoleView = document.querySelector('#console');
+    const errorView = document.querySelector('#error');
+    const timingView = document.querySelector('#timing');
+    const openResultButton = document.querySelector('#open-result');
+    const folderRefresh = document.querySelector('#folder-refresh');
+    const addTestTypeButton = document.querySelector('#add-test-type');
+    const uploadDialog = document.querySelector('#upload-dialog');
+    const uploadForm = document.querySelector('#upload-form');
+    const uploadInput = document.querySelector('#upload-input');
+    const uploadOutput = document.querySelector('#upload-output');
+    const uploadError = document.querySelector('#upload-error');
+    const uploadCancelButton = document.querySelector('#upload-cancel');
+    const uploadConfirmButton = document.querySelector('#upload-confirm');
+    const deleteTestTypesButton = document.querySelector('#delete-test-types');
+    const deleteTestResultsButton = document.querySelector('#delete-test-results');
+    const deleteDialog = document.querySelector('#delete-dialog');
+    const deleteList = document.querySelector('#delete-list');
+    const deleteCancelButton = document.querySelector('#delete-cancel');
+    const deleteConfirmButton = document.querySelector('#delete-confirm');
+    const fileList = document.querySelector('#file-list');
+    const fileTitle = document.querySelector('#file-title');
+    const fileSize = document.querySelector('#file-size');
+    const fileContent = document.querySelector('#file-content');
+    const routeSelector = document.querySelector('#route-selector');
+    const routesRefresh = document.querySelector('#routes-refresh');
+    const tabButtons = document.querySelectorAll('.tab-button');
+    let logIndex = 0;
+    let runId = 0;
+    let polling = false;
+    let lastFinishedAt = null;
+    let lastResultPath = null;
+    let activeFileRoot = null;
+    let activeFilePath = null;
+    let deleteSelectionMode = null;
+    let testRunRunning = false;
+    let pendingDeleteToken = null;
+    let routeMap = null;
+    const visibleRouteLayers = new Map();
+    const selectedTestTypes = new Set();
+    const selectedResultFolders = new Set();
+
+    function ensureMap() {
+      if (routeMap) return true;
+      if (typeof L === 'undefined') {
+        document.querySelector('#route-map').textContent =
+          'The map library could not load. Check the internet connection and refresh.';
+        return false;
+      }
+      routeMap = L.map('route-map').setView([49.99, 36.24], 11);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(routeMap);
+      return true;
+    }
+
+    function sourceColor(source) {
+      if (source.kind === 'output') return '#2563eb';
+      let hash = 0;
+      for (const character of source.id) hash = ((hash << 5) - hash) + character.charCodeAt(0);
+      return `hsl(${Math.abs(hash) % 360} 78% 48%)`;
+    }
+
+    function fitVisibleRoutes() {
+      if (!routeMap || !visibleRouteLayers.size) return;
+      const bounds = L.latLngBounds([]);
+      for (const layer of visibleRouteLayers.values()) {
+        for (const latLon of layer.coordinates) bounds.extend(latLon);
+      }
+      if (bounds.isValid()) routeMap.fitBounds(bounds.pad(0.15), {maxZoom: 16});
+    }
+
+    function makePointPopup(group, source, route, point) {
+      const content = document.createElement('div');
+      const title = document.createElement('strong');
+      title.textContent = `${group.name} · ${source.label}`;
+      const details = document.createElement('div');
+      details.textContent =
+        `${route.label}\nOrder ${point.order} · point ${point.point_id} · job ${point.job_id}`;
+      details.style.whiteSpace = 'pre-line';
+      content.append(title, details);
+      return content;
+    }
+
+    function setRouteVisible(checked, group, source, route, color, fitAfter = true) {
+      const selectionId = `${source.id}|${route.id}`;
+      if (!checked) {
+        const existing = visibleRouteLayers.get(selectionId);
+        if (existing && routeMap) routeMap.removeLayer(existing.layer);
+        visibleRouteLayers.delete(selectionId);
+        if (fitAfter) fitVisibleRoutes();
+        return;
+      }
+      if (!ensureMap() || !route.points.length) return;
+
+      const coordinates = route.points.map(point => [point.lat, point.lon]);
+      const layer = L.layerGroup();
+      if (coordinates.length > 1) {
+        L.polyline(coordinates, {
+          color,
+          weight: source.kind === 'output' ? 6 : 4,
+          opacity: 0.86,
+          dashArray: source.kind === 'test' ? '10 7' : null,
+        }).addTo(layer);
+      }
+      route.points.forEach((point, index) => {
+        const number = document.createElement('span');
+        number.className = 'route-stop-number';
+        number.style.setProperty('--route-color', color);
+        number.textContent = point.order;
+        const icon = L.divIcon({
+          className: 'route-number-icon',
+          html: number,
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+        });
+        L.marker([point.lat, point.lon], {
+          icon,
+          zIndexOffset: index === 0 ? 100 : 0,
+        }).bindPopup(makePointPopup(group, source, route, point)).addTo(layer);
+      });
+      layer.addTo(routeMap);
+      visibleRouteLayers.set(selectionId, {layer, coordinates});
+      if (fitAfter) fitVisibleRoutes();
+    }
+
+    function clearVisibleRoutes() {
+      if (routeMap) {
+        for (const item of visibleRouteLayers.values()) routeMap.removeLayer(item.layer);
+      }
+      visibleRouteLayers.clear();
+    }
+
+    function renderRouteGroups(groups) {
+      routeSelector.replaceChildren();
+      if (!groups.length) {
+        routeSelector.innerHTML = '<div class="map-message">No *-input.json groups found.</div>';
+        return;
+      }
+
+      groups.forEach(group => {
+        const details = document.createElement('details');
+        details.className = 'route-group';
+        const summary = document.createElement('summary');
+        summary.textContent = group.name;
+        details.append(summary);
+
+        if (group.error) {
+          const error = document.createElement('div');
+          error.className = 'route-group-error';
+          error.textContent = group.error;
+          details.append(error);
+        }
+
+        for (const source of group.sources) {
+          const sourceSection = document.createElement('div');
+          sourceSection.className = 'route-source';
+          const sourceTitle = document.createElement('label');
+          sourceTitle.className = 'route-source-title';
+          const sourceToggle = document.createElement('input');
+          sourceToggle.type = 'checkbox';
+          const swatch = document.createElement('span');
+          swatch.className = 'route-swatch';
+          const color = sourceColor(source);
+          swatch.style.background = color;
+          const sourceText = document.createElement('span');
+          sourceText.textContent = source.label;
+          sourceText.title = source.file;
+          sourceTitle.append(sourceToggle, swatch, sourceText);
+          sourceSection.append(sourceTitle);
+
+          if (source.error) {
+            const error = document.createElement('div');
+            error.className = 'route-group-error';
+            error.textContent = source.error;
+            sourceSection.append(error);
+          }
+
+          const routeChoices = document.createElement('div');
+          routeChoices.className = 'route-choices';
+          const routeControls = [];
+
+          function syncSourceToggle() {
+            const enabledControls = routeControls.filter(control => !control.checkbox.disabled);
+            const checkedCount = enabledControls.filter(control => control.checkbox.checked).length;
+            sourceToggle.disabled = enabledControls.length === 0;
+            sourceToggle.checked = enabledControls.length > 0 && checkedCount === enabledControls.length;
+            sourceToggle.indeterminate = checkedCount > 0 && checkedCount < enabledControls.length;
+          }
+
+          for (const route of source.routes) {
+            const choice = document.createElement('label');
+            choice.className = 'route-choice';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.disabled = !route.points.length;
+            const label = document.createElement('span');
+            label.textContent = route.label;
+            const detail = document.createElement('span');
+            detail.className = 'route-detail';
+            const missing = route.missing_points
+              ? ` · ${route.missing_points} point(s) missing coordinates`
+              : '';
+            detail.textContent =
+              `${route.points.length} mapped stops · distance ${route.total_distance ?? 'unknown'}${missing}`;
+            label.append(detail);
+            checkbox.addEventListener('change', () => {
+              setRouteVisible(checkbox.checked, group, source, route, color);
+              syncSourceToggle();
+            });
+            choice.append(checkbox, label);
+            routeChoices.append(choice);
+            routeControls.push({checkbox, route});
+          }
+          sourceToggle.addEventListener('change', () => {
+            for (const control of routeControls) {
+              if (control.checkbox.disabled) continue;
+              if (control.checkbox.checked === sourceToggle.checked) continue;
+              control.checkbox.checked = sourceToggle.checked;
+              setRouteVisible(
+                sourceToggle.checked,
+                group,
+                source,
+                control.route,
+                color,
+                false,
+              );
+            }
+            sourceToggle.indeterminate = false;
+            fitVisibleRoutes();
+          });
+          syncSourceToggle();
+          sourceSection.append(routeChoices);
+          details.append(sourceSection);
+        }
+        routeSelector.append(details);
+      });
+    }
+
+    async function loadRouteGroups() {
+      routesRefresh.disabled = true;
+      routeSelector.innerHTML = '<div class="map-message">Loading route groups...</div>';
+      clearVisibleRoutes();
+      try {
+        const data = await fetchJson('/api/routes');
+        renderRouteGroups(data.groups);
+      } catch (error) {
+        routeSelector.innerHTML = '';
+        const message = document.createElement('div');
+        message.className = 'map-message file-error';
+        message.textContent = error.message;
+        routeSelector.append(message);
+      } finally {
+        routesRefresh.disabled = false;
+      }
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === null) return '';
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    async function fetchJson(url, options) {
+      const response = await fetch(url, options);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
+      return data;
+    }
+
+    function findFileButton(root, path) {
+      return [...fileList.querySelectorAll('.file-item')].find(button =>
+        button.dataset.fileRoot === root && button.dataset.filePath === path) ?? null;
+    }
+
+    function selectFileInList(root, path, reveal = true) {
+      activeFileRoot = root;
+      activeFilePath = path;
+      let activeButton = null;
+      fileList.querySelectorAll('.file-item').forEach(button => {
+        const active =
+          button.dataset.fileRoot === root && button.dataset.filePath === path;
+        button.classList.toggle('active', active);
+        if (active) {
+          button.setAttribute('aria-current', 'true');
+          activeButton = button;
+        } else {
+          button.removeAttribute('aria-current');
+        }
+      });
+      if (reveal && activeButton) {
+        const group = activeButton.closest('details');
+        if (group) group.open = true;
+        activeButton.scrollIntoView({block: 'nearest'});
+      }
+    }
+
+    async function loadFile(root, path) {
+      const params = new URLSearchParams({root, path});
+      try {
+        const data = await fetchJson(`/api/file?${params}`);
+        fileTitle.textContent = data.path;
+        fileSize.textContent = `${formatBytes(data.size)} · read only`;
+        fileContent.classList.remove('file-error');
+        fileContent.textContent = data.content;
+        fileContent.scrollTop = 0;
+        fileContent.scrollLeft = 0;
+        selectFileInList(root, path);
+      } catch (error) {
+        fileTitle.textContent = path;
+        fileSize.textContent = '';
+        fileContent.classList.add('file-error');
+        fileContent.textContent = error.message;
+      }
+    }
+
+    function makeFileButton(item) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'file-item';
+      button.dataset.fileRoot = item.root;
+      button.dataset.filePath = item.path;
+      if (item.root === activeFileRoot && item.path === activeFilePath) {
+        button.classList.add('active');
+        button.setAttribute('aria-current', 'true');
+      }
+      const name = document.createElement('span');
+      name.className = 'file-name';
+      name.textContent = `📄 ${item.label}`;
+      name.title = item.path;
+      const meta = document.createElement('span');
+      meta.className = 'file-meta';
+      meta.textContent = formatBytes(item.size);
+      button.append(name, meta);
+      button.addEventListener('click', () => loadFile(item.root, item.path));
+      return button;
+    }
+
+    function updateDeleteButtons() {
+      addTestTypeButton.disabled = testRunRunning;
+      deleteTestTypesButton.disabled = testRunRunning;
+      deleteTestResultsButton.disabled = testRunRunning;
+      deleteTestTypesButton.setAttribute(
+        'aria-pressed', deleteSelectionMode === 'test-types' ? 'true' : 'false');
+      deleteTestResultsButton.setAttribute(
+        'aria-pressed', deleteSelectionMode === 'test-results' ? 'true' : 'false');
+      deleteTestTypesButton.textContent = deleteSelectionMode === 'test-types'
+        ? selectedTestTypes.size
+          ? `Delete selected test types (${selectedTestTypes.size})`
+          : 'Cancel test type selection'
+        : 'Delete test type';
+      deleteTestResultsButton.textContent = deleteSelectionMode === 'test-results'
+        ? selectedResultFolders.size
+          ? `Delete selected test results (${selectedResultFolders.size})`
+          : 'Cancel test result selection'
+        : 'Delete test results';
+    }
+
+    function applyDeleteSelectionMode() {
+      fileList.classList.toggle(
+        'delete-select-types', deleteSelectionMode === 'test-types');
+      fileList.classList.toggle(
+        'delete-select-results', deleteSelectionMode === 'test-results');
+      fileList.querySelectorAll('.json-file-group').forEach(group => {
+        group.open =
+          deleteSelectionMode === 'test-results' && group.dataset.groupKind === 'results';
+      });
+    }
+
+    function setDeleteSelectionMode(mode) {
+      deleteSelectionMode = mode;
+      selectedTestTypes.clear();
+      selectedResultFolders.clear();
+      fileList.querySelectorAll('.group-select, .result-select').forEach(checkbox => {
+        checkbox.checked = false;
+      });
+      applyDeleteSelectionMode();
+      updateDeleteButtons();
+      if (mode === null && activeFileRoot && activeFilePath) {
+        selectFileInList(activeFileRoot, activeFilePath);
+      }
+    }
+
+    function handleDeleteSelection(mode, selectedItems) {
+      if (deleteSelectionMode !== mode) {
+        setDeleteSelectionMode(mode);
+      } else if (selectedItems.size) {
+        previewDeletion(mode, selectedItems);
+      } else {
+        setDeleteSelectionMode(null);
+      }
+    }
+
+    function makeSelectableResult(item) {
+      const row = document.createElement('div');
+      row.className = 'selectable-file-row';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'result-select';
+      checkbox.setAttribute('aria-label', `Select test result ${item.label}`);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) selectedResultFolders.add(item.run_folder);
+        else selectedResultFolders.delete(item.run_folder);
+        updateDeleteButtons();
+      });
+      row.append(checkbox, makeFileButton(item));
+      return row;
+    }
+
+    async function loadJsonGroups() {
+      selectedTestTypes.clear();
+      selectedResultFolders.clear();
+      updateDeleteButtons();
+      fileList.innerHTML = '<div class="empty-folder">Loading...</div>';
+      try {
+        const data = await fetchJson('/api/json-files');
+        fileList.replaceChildren();
+
+        if (!data.results.length && !data.groups.length) {
+          fileList.innerHTML = '<div class="empty-folder">No grouped JSON files found.</div>';
+          return;
+        }
+
+        if (data.results.length) {
+          const resultsGroup = document.createElement('details');
+          resultsGroup.className = 'json-file-group';
+          resultsGroup.dataset.groupKind = 'results';
+          const resultsSummary = document.createElement('summary');
+          resultsSummary.textContent = 'Results';
+          resultsGroup.append(resultsSummary);
+          const resultItems = document.createElement('div');
+          resultItems.className = 'json-file-items';
+          for (const result of data.results) resultItems.append(makeSelectableResult(result));
+          resultsGroup.append(resultItems);
+          fileList.append(resultsGroup);
+        }
+
+        data.groups.forEach(group => {
+          const details = document.createElement('details');
+          details.className = 'json-file-group';
+          details.dataset.groupKind = 'test-type';
+          const summary = document.createElement('summary');
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.className = 'group-select';
+          checkbox.setAttribute('aria-label', `Select test type ${group.name}`);
+          checkbox.addEventListener('click', event => event.stopPropagation());
+          checkbox.addEventListener('change', () => {
+            if (checkbox.checked) selectedTestTypes.add(group.name);
+            else selectedTestTypes.delete(group.name);
+            updateDeleteButtons();
+          });
+          const groupName = document.createElement('span');
+          groupName.textContent = group.name;
+          summary.append(checkbox, groupName);
+          details.append(summary);
+
+          const items = document.createElement('div');
+          items.className = 'json-file-items';
+          const orderedFiles = [
+            ...(group.input ? [group.input] : []),
+            ...(group.output ? [group.output] : []),
+            ...group.tests,
+          ];
+
+          for (const item of orderedFiles) {
+            items.append(makeFileButton(item));
+          }
+          details.append(items);
+          fileList.append(details);
+        });
+        applyDeleteSelectionMode();
+      } catch (error) {
+        fileList.innerHTML = '';
+        const message = document.createElement('div');
+        message.className = 'empty-folder file-error';
+        message.textContent = error.message;
+        fileList.append(message);
+      }
+    }
+
+    function setStatus(status) {
+      statusBadge.className = 'status';
+      if (status.stopping) {
+        statusBadge.textContent = 'Stopping';
+        statusBadge.classList.add('running');
+      } else if (status.running) {
+        statusBadge.textContent = 'Running';
+        statusBadge.classList.add('running');
+      } else if (status.stopped) {
+        statusBadge.textContent = 'Stopped';
+        statusBadge.classList.add('failed');
+      } else if (status.overall_status === 'PASSED') {
+        statusBadge.textContent = 'PASSED';
+        statusBadge.classList.add('success');
+      } else if (status.overall_status === 'FAILED') {
+        statusBadge.textContent = 'FAILED';
+        statusBadge.classList.add('failed');
+      } else if (status.exit_code !== null) {
+        statusBadge.textContent = `Failed (${status.exit_code})`;
+        statusBadge.classList.add('failed');
+      } else {
+        statusBadge.textContent = 'Idle';
+      }
+      testRunRunning = status.running;
+      runButton.classList.toggle('stop-button', status.running);
+      runButton.textContent = status.stopping
+        ? 'Stopping...'
+        : status.running ? 'Stop test run' : 'Start test run';
+      runButton.disabled = Boolean(status.stopping);
+      updateDeleteButtons();
+      lastResultPath = status.result_path;
+      openResultButton.disabled = !lastResultPath;
+      timingView.textContent = status.running
+        ? `Started ${status.started_at ?? ''}`
+        : status.finished_at ? `Finished ${status.finished_at}` : '';
+      if (status.finished_at && status.finished_at !== lastFinishedAt) {
+        lastFinishedAt = status.finished_at;
+        loadJsonGroups();
+        loadRouteGroups();
+      }
+    }
+
+    async function loadDefaults() {
+      const response = await fetch('/api/config');
+      const config = await response.json();
+      for (const [name, value] of Object.entries(config)) {
+        const input = form.elements.namedItem(name);
+        if (input) input.value = value;
+      }
+    }
+
+    async function pollStatus() {
+      if (polling) return;
+      polling = true;
+      try {
+        const response = await fetch(`/api/status?after=${logIndex}`);
+        const status = await response.json();
+        if (status.run_id !== runId) {
+          runId = status.run_id;
+          logIndex = 0;
+          consoleView.textContent = '';
+          return;
+        }
+        if (status.run_id > 0) {
+          const stayAtBottom =
+            consoleView.scrollTop + consoleView.clientHeight >= consoleView.scrollHeight - 24;
+          const formatDuration = (seconds, roundUp = false) => {
+            const wholeSeconds = roundUp ? Math.ceil(seconds) : Math.floor(seconds);
+            const minutes = Math.floor(wholeSeconds / 60);
+            const remainder = wholeSeconds % 60;
+            return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+          };
+          const expected = formatDuration(status.expected_time_seconds ?? 0, true);
+          const elapsed = formatDuration(status.elapsed_time_seconds ?? 0);
+          const timingLines = `Expected time: ${expected}\nTime passed:   ${elapsed}`;
+          const consoleText = `${status.logs.join('\n')}\n\n${timingLines}\n`;
+          if (consoleView.textContent !== consoleText) consoleView.textContent = consoleText;
+          if (stayAtBottom) consoleView.scrollTop = consoleView.scrollHeight;
+        }
+        logIndex = status.next;
+        setStatus(status);
+      } catch (error) {
+        errorView.textContent = `Status connection failed: ${error.message}`;
+      } finally {
+        polling = false;
+      }
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      errorView.textContent = '';
+
+      if (testRunRunning) {
+        runButton.disabled = true;
+        try {
+          const response = await fetch('/api/stop', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: '{}',
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Could not stop test run.');
+          setStatus(data);
+          await pollStatus();
+        } catch (error) {
+          errorView.textContent = error.message;
+          await pollStatus();
+        }
+        return;
+      }
+
+      const payload = Object.fromEntries(new FormData(form).entries());
+
+      try {
+        const response = await fetch('/api/start', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not start test run.');
+        runId = data.run_id;
+        logIndex = 0;
+        consoleView.textContent = '';
+        setStatus(data);
+        await pollStatus();
+      } catch (error) {
+        errorView.textContent = error.message;
+      }
+    });
+
+    async function previewDeletion(mode, selectedItems) {
+      try {
+        const preview = await fetchJson('/api/delete-preview', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({mode, items: [...selectedItems]}),
+        });
+        pendingDeleteToken = preview.token;
+        deleteList.replaceChildren();
+        for (const path of preview.paths) {
+          const item = document.createElement('li');
+          item.textContent = path;
+          deleteList.append(item);
+        }
+        deleteDialog.showModal();
+      } catch (error) {
+        window.alert(error.message);
+      }
+    }
+
+    function closeUploadDialog() {
+      uploadDialog.close();
+      uploadForm.reset();
+      uploadError.textContent = '';
+    }
+
+    addTestTypeButton.addEventListener('click', () => {
+      setDeleteSelectionMode(null);
+      uploadForm.reset();
+      uploadError.textContent = '';
+      uploadDialog.showModal();
+    });
+    uploadCancelButton.addEventListener('click', closeUploadDialog);
+    uploadDialog.addEventListener('cancel', () => {
+      uploadForm.reset();
+      uploadError.textContent = '';
+    });
+    uploadForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      uploadError.textContent = '';
+      const inputFile = uploadInput.files[0];
+      const outputFile = uploadOutput.files[0];
+      if (!inputFile || !outputFile) {
+        uploadError.textContent = 'Select both JSON files.';
+        return;
+      }
+      if (!inputFile.name.endsWith('-input.json')) {
+        uploadError.textContent = 'The input filename must end with -input.json.';
+        return;
+      }
+      if (!outputFile.name.endsWith('-output.json')) {
+        uploadError.textContent = 'The output filename must end with -output.json.';
+        return;
+      }
+      const inputBase = inputFile.name.slice(0, -'-input.json'.length);
+      const outputBase = outputFile.name.slice(0, -'-output.json'.length);
+      if (!inputBase || inputBase !== outputBase) {
+        uploadError.textContent =
+          'Input and output filenames must use the same name before their suffixes.';
+        return;
+      }
+
+      uploadConfirmButton.disabled = true;
+      try {
+        const [inputContent, outputContent] = await Promise.all([
+          inputFile.text(),
+          outputFile.text(),
+        ]);
+        await fetchJson('/api/add-test-type', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            input: {name: inputFile.name, content: inputContent},
+            output: {name: outputFile.name, content: outputContent},
+          }),
+        });
+        closeUploadDialog();
+        await loadJsonGroups();
+        await loadRouteGroups();
+      } catch (error) {
+        uploadError.textContent = error.message;
+      } finally {
+        uploadConfirmButton.disabled = false;
+      }
+    });
+
+    deleteTestTypesButton.addEventListener('click', () =>
+      handleDeleteSelection('test-types', selectedTestTypes));
+    deleteTestResultsButton.addEventListener('click', () =>
+      handleDeleteSelection('test-results', selectedResultFolders));
+    deleteCancelButton.addEventListener('click', () => {
+      pendingDeleteToken = null;
+      setDeleteSelectionMode(null);
+      deleteDialog.close();
+    });
+    deleteDialog.addEventListener('cancel', () => {
+      pendingDeleteToken = null;
+      setDeleteSelectionMode(null);
+    });
+    deleteConfirmButton.addEventListener('click', async () => {
+      if (!pendingDeleteToken) return;
+      deleteConfirmButton.disabled = true;
+      try {
+        await fetchJson('/api/delete', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({token: pendingDeleteToken}),
+        });
+        pendingDeleteToken = null;
+        deleteDialog.close();
+        fileTitle.textContent = 'Select a file to view it';
+        fileSize.textContent = '';
+        fileContent.textContent = 'Read-only file contents appear here.';
+        activeFileRoot = null;
+        activeFilePath = null;
+        setDeleteSelectionMode(null);
+        await loadJsonGroups();
+        await loadRouteGroups();
+        await pollStatus();
+      } catch (error) {
+        window.alert(error.message);
+      } finally {
+        deleteConfirmButton.disabled = false;
+      }
+    });
+
+    folderRefresh.addEventListener('click', loadJsonGroups);
+    routesRefresh.addEventListener('click', loadRouteGroups);
+
+    function activateTab(pageId) {
+      tabButtons.forEach(button =>
+        button.classList.toggle('active', button.dataset.tab === pageId));
+      document.querySelectorAll('.tab-page').forEach(page =>
+        page.classList.toggle('active', page.id === pageId));
+      if (pageId === 'map-page') {
+        window.requestAnimationFrame(() => {
+          if (ensureMap()) routeMap.invalidateSize();
+        });
+      }
+    }
+
+    tabButtons.forEach(button =>
+      button.addEventListener('click', () => activateTab(button.dataset.tab)));
+
+    openResultButton.addEventListener('click', async () => {
+      if (!lastResultPath) return;
+      activateTab('files-page');
+      if (!findFileButton('tests', lastResultPath)) await loadJsonGroups();
+      await loadFile('tests', lastResultPath);
+    });
+
+    async function initialize() {
+      try {
+        await loadDefaults();
+        await pollStatus();
+        await loadJsonGroups();
+        await loadRouteGroups();
+      } catch (error) {
+        errorView.textContent = `GUI initialization failed: ${error.message}`;
+      }
+      window.setInterval(pollStatus, 500);
+    }
+
+    initialize();
+  </script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+## MathCore JSON tester GUI
+
+Start the local browser interface from the directory containing `json-data` and
+`tests` (currently `scripts`):
+
+```sh
+cd scripts
+python json_http_tester_gui.py
+```
+
+By default, the server binds to `http://0.0.0.0:9010/`. It prints this address
+but does not open a browser automatically. The run form allows the MathCore base
+URL to be changed. The configured `JSON_DATA_FOLDER` and `TESTS_FOLDER` are
+available through a grouped browser whose file-content viewer is read-only.
+Tester output is shown live in the page and is also mirrored in the GUI server's
+console. Displayed filesystem paths are relative to the directory from which the
+GUI was launched. Routine browser API access lines are hidden from that console.
+
+While a test is running, the green **Start test run** button becomes a red
+**Stop test run** button. Stopping calls `STOP_REQUEST` for the active query,
+terminates the local runner, and removes only the newly created test-run folder.
+
+The **JSON files** tab groups files by the shared name before `-input.json`,
+`-output.json`, and `-test.json`. Input and expected output appear first in each
+group; test-run files follow in descending test-folder name order.
+The same tab also has a separate **Results** group containing every `result.txt`,
+ordered by its test-run folder name descending.
+
+All groups start collapsed. Use **Delete test type** to enter test-type selection
+mode, then select group headers to remove their input, expected-output, and
+matching test files. Use **Delete test results** to collapse the other groups,
+open **Results**, and select complete timestamped run folders. Click the active
+delete button again to review the selection. Both actions show an exact path
+preview and require confirmation; deletion is disabled while a test run is active.
+
+Use the green **Add test type** button to upload a matching `-input.json` and
+`-output.json` pair. Both files must contain valid JSON, use the same base name,
+and not already exist in `JSON_DATA_FOLDER`. Uploading is disabled during a run.
+
+The page has three tabs in this order: **Runner**, **JSON files**, and **Map**.
+When a run creates `result.txt`, the Live progress header displays the overall
+`PASSED` or `FAILED` value read from that file. **Open result** then becomes
+available and opens the report directly in the read-only JSON files viewer.
+
+The separate **Map** tab groups files by their shared name before the
+`-input.json`, `-output.json`, and `-test.json` suffixes. Expected and historical
+test routes can be toggled independently inside each group. Delivery `pointId`
+values are mapped to the `lat` and `lon` coordinates in the matching input file.
+Map groups start collapsed; refreshing routes clears every route selection and
+collapses all groups again.
+Each expected/test source has a parent checkbox that toggles all of its routes;
+the indented route checkboxes can still be changed individually.
+Expected routes use a solid blue line; test routes use distinct dashed colors.
+Stops are numbered continuously across every route in an individual result file,
+so later routes continue from the preceding route's final stop number.
+The interactive map uses Leaflet and OpenStreetMap tiles, so its background map
+requires internet access.
+
+To host the GUI at another address, edit `GUI_URL` at the top of
+`json_http_tester_gui.py` or pass `--url`:
+
+```sh
+python json_http_tester_gui.py --url http://127.0.0.1:9001
+```
+
+The console tester still works without arguments and uses the configuration
+constants at the top of its file. It also accepts optional overrides:
+
+```sh
+python scripts/json_http_tester.py --base-url http://localhost:9000 \
+  --json-data-folder ./json-data --tests-folder ./tests \
+  --timeout 30 --poll-interval 1
+```

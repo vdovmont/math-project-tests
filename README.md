@@ -38,6 +38,14 @@ Use the green **Add test type** button to upload a matching `-input.json` and
 and not already exist in `JSON_DATA_FOLDER`. Uploading is disabled during a run.
 
 The page has three tabs in this order: **Runner**, **JSON files**, and **Map**.
+The Runner has separate allowed-error percentages for calculation time, total
+distance, total value, and unhandled jobs. Each defaults to zero. A metric passes
+when its test value is no greater than the expected value plus that percentage;
+for example, an expected value of 100 with a 10% allowance passes through 110.
+The comparison report shows both the raw and tolerance-adjusted expected values,
+the raw difference, and a status for every metric. Values at or below the raw
+expected value show `PASSED`; values above raw but within the allowance show
+`PASSED (WITH TOLERANCE)`; values above the allowance show `FAILED`.
 When a run creates `result.txt`, the Live progress header displays the overall
 `PASSED` or `FAILED` value read from that file. **Open result** then becomes
 available and opens the report directly in the read-only JSON files viewer.
@@ -69,5 +77,9 @@ constants at the top of its file. It also accepts optional overrides:
 ```sh
 python scripts/json_http_tester.py --base-url http://localhost:9000 \
   --json-data-folder ./json-data --tests-folder ./tests \
-  --timeout 30 --poll-interval 1
+  --timeout 30 --poll-interval 1 \
+  --calculation-time-tolerance-percent 0 \
+  --total-distance-tolerance-percent 0 \
+  --total-value-tolerance-percent 0 \
+  --unhandled-jobs-tolerance-percent 0
 ```

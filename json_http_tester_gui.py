@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import secrets
 import shutil
@@ -38,6 +39,32 @@ FILE_ROOTS = {
     "json-data": ("JSON data", tester.JSON_DATA_FOLDER),
     "tests": ("Tests", tester.TESTS_FOLDER),
 }
+TOLERANCE_FIELDS = (
+    (
+        "calculation_time_tolerance_percent",
+        "calculation-time-tolerance-percent",
+        "Calculation time",
+        tester.CALCULATION_TIME_TOLERANCE_PERCENT,
+    ),
+    (
+        "total_distance_tolerance_percent",
+        "total-distance-tolerance-percent",
+        "Total distance",
+        tester.TOTAL_DISTANCE_TOLERANCE_PERCENT,
+    ),
+    (
+        "total_value_tolerance_percent",
+        "total-value-tolerance-percent",
+        "Total value",
+        tester.TOTAL_VALUE_TOLERANCE_PERCENT,
+    ),
+    (
+        "unhandled_jobs_tolerance_percent",
+        "unhandled-jobs-tolerance-percent",
+        "Unhandled jobs",
+        tester.UNHANDLED_JOBS_TOLERANCE_PERCENT,
+    ),
+)
 DELETE_PREVIEWS: dict[str, dict[str, object]] = {}
 DELETE_PREVIEW_LOCK = threading.Lock()
 
@@ -206,6 +233,10 @@ class RunState:
             "--poll-interval",
             str(options["poll_interval"]),
         ]
+        for option_name, cli_name, _, _ in TOLERANCE_FIELDS:
+            argument = [f"--{cli_name}", str(options[option_name])]
+            command.extend(argument)
+            display_command.extend(argument)
         self._append_log("> " + subprocess.list2cmdline(display_command))
 
         exit_code = 1
@@ -473,12 +504,25 @@ def validate_options(data: object) -> dict[str, object]:
     if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
         raise ValueError("Base URL must be a valid HTTP or HTTPS URL.")
 
+    tolerances: dict[str, float] = {}
+    for option_name, _, label, _ in TOLERANCE_FIELDS:
+        try:
+            value = float(data.get(option_name, ""))
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"{label} tolerance must be a number.") from error
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(
+                f"{label} tolerance must be a finite, non-negative percentage."
+            )
+        tolerances[option_name] = value
+
     return {
         "base_url": base_url.strip(),
         "json_data_folder": str(tester.JSON_DATA_FOLDER),
         "tests_folder": str(tester.TESTS_FOLDER),
         "timeout": tester.REQUEST_TIMEOUT_SECONDS,
         "poll_interval": tester.STATE_POLL_INTERVAL_SECONDS,
+        **tolerances,
     }
 
 
@@ -1067,11 +1111,14 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/config":
-            self.send_json(
+            config: dict[str, object] = {"base_url": tester.BASE_URL}
+            config.update(
                 {
-                    "base_url": tester.BASE_URL,
+                    option_name: default
+                    for option_name, _, _, default in TOLERANCE_FIELDS
                 }
             )
+            self.send_json(config)
             return
 
         if parsed.path in {"/api/files", "/api/file"}:

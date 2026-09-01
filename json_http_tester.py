@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -28,6 +29,17 @@ JSON_DATA_FOLDER = Path(".") / "json-data"
 TESTS_FOLDER = Path(".") / "tests"
 REQUEST_TIMEOUT_SECONDS = 30.0
 STATE_POLL_INTERVAL_SECONDS = 1.0
+CALCULATION_TIME_TOLERANCE_PERCENT = 0.0
+TOTAL_DISTANCE_TOLERANCE_PERCENT = 0.0
+TOTAL_VALUE_TOLERANCE_PERCENT = 0.0
+UNHANDLED_JOBS_TOLERANCE_PERCENT = 0.0
+
+TOLERANCE_PERCENT_DEFAULTS = {
+    "calculation_time": CALCULATION_TIME_TOLERANCE_PERCENT,
+    "totalDistance": TOTAL_DISTANCE_TOLERANCE_PERCENT,
+    "totalValue": TOTAL_VALUE_TOLERANCE_PERCENT,
+    "unhandled_jobs": UNHANDLED_JOBS_TOLERANCE_PERCENT,
+}
 
 CALCULATION_TIME_PATTERN = re.compile(
     r"Calculation time:\s*"
@@ -45,6 +57,26 @@ def parse_arguments(arguments: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--poll-interval", type=float, default=STATE_POLL_INTERVAL_SECONDS
+    )
+    parser.add_argument(
+        "--calculation-time-tolerance-percent",
+        type=float,
+        default=CALCULATION_TIME_TOLERANCE_PERCENT,
+    )
+    parser.add_argument(
+        "--total-distance-tolerance-percent",
+        type=float,
+        default=TOTAL_DISTANCE_TOLERANCE_PERCENT,
+    )
+    parser.add_argument(
+        "--total-value-tolerance-percent",
+        type=float,
+        default=TOTAL_VALUE_TOLERANCE_PERCENT,
+    )
+    parser.add_argument(
+        "--unhandled-jobs-tolerance-percent",
+        type=float,
+        default=UNHANDLED_JOBS_TOLERANCE_PERCENT,
     )
     return parser.parse_args(arguments)
 
@@ -247,10 +279,11 @@ def extract_result_metrics(data: object) -> dict[str, int | float]:
     }
 
 
-def format_number(value: int | float) -> str:
-    if isinstance(value, float):
-        return f"{value:.15g}"
-    return str(value)
+def format_number(value: int | float, *, integer: bool = False) -> str:
+    formatted = f"{value:.1f}"
+    if integer:
+        return formatted.rstrip("0").rstrip(".")
+    return formatted
 
 
 def format_difference(
@@ -264,12 +297,47 @@ def format_difference(
     return f"{value:+.1f}{suffix}"
 
 
+def value_is_within_tolerance(
+    test_value: int | float,
+    expected_value: int | float,
+    tolerance_percent: float,
+) -> bool:
+    return test_value <= expected_value_with_tolerance(
+        expected_value, tolerance_percent
+    )
+
+
+def expected_value_with_tolerance(
+    expected_value: int | float, tolerance_percent: float
+) -> float:
+    allowed_error = abs(expected_value) * tolerance_percent / 100
+    return expected_value + allowed_error
+
+
+def comparison_status(
+    test_value: int | float,
+    expected_value: int | float,
+    tolerated_expected_value: int | float,
+) -> str:
+    if test_value <= expected_value:
+        return "PASSED"
+    if test_value <= tolerated_expected_value:
+        return "PASSED (WITH TOLERANCE)"
+    return "FAILED"
+
+
 def create_comparison_report(
-    input_files: list[Path], run_folder: Path, json_data_folder: Path
+    input_files: list[Path],
+    run_folder: Path,
+    json_data_folder: Path,
+    tolerance_percents: dict[str, float] | None = None,
 ) -> tuple[Path, bool]:
     """Compare generated test JSONs with expected output JSONs."""
+    tolerances = TOLERANCE_PERCENT_DEFAULTS | (tolerance_percents or {})
     # The first line is filled after all comparisons determine the overall result.
-    report_parts: list[str | list[tuple[str, str, str, str, str]]] = [
+    report_parts: list[
+        str | list[tuple[str, str, str, str, str, str]]
+    ] = [
         "",
         "",
         "",
@@ -318,23 +386,24 @@ def create_comparison_report(
         test_time = test_metrics["calculation_time"]
         expected_time = expected_metrics["calculation_time"]
         time_difference = test_time - expected_time
-        if time_difference < 0:
-            time_status = "FASTER"
-        elif time_difference > 0:
-            time_status = "SLOWER"
-        else:
-            time_status = "SAME"
+        tolerated_time = expected_value_with_tolerance(
+            expected_time, tolerances["calculation_time"]
+        )
+        time_status = comparison_status(
+            test_time, expected_time, tolerated_time
+        )
 
         rows = [
             (
                 "Calculation time",
                 f"{format_number(test_time)}s",
                 f"{format_number(expected_time)}s",
+                f"{format_number(tolerated_time)}s",
                 format_difference(time_difference, suffix="s"),
                 time_status,
             )
         ]
-        values_passed = True
+        values_passed = time_status != "FAILED"
         for key, label in (
             ("totalDistance", "Total distance"),
             ("totalValue", "Total value"),
@@ -343,22 +412,36 @@ def create_comparison_report(
             test_value = test_metrics[key]
             expected_value = expected_metrics[key]
             difference = test_value - expected_value
-            status = "MATCH" if test_value == expected_value else "DIFFERENT"
+            tolerated_expected = expected_value_with_tolerance(
+                expected_value, tolerances[key]
+            )
+            value_status = comparison_status(
+                test_value, expected_value, tolerated_expected
+            )
+            integer_value = key == "unhandled_jobs"
             rows.append(
                 (
                     label,
-                    format_number(test_value),
-                    format_number(expected_value),
+                    format_number(test_value, integer=integer_value),
+                    format_number(expected_value, integer=integer_value),
+                    format_number(tolerated_expected, integer=integer_value),
                     format_difference(
-                        difference, integer=key == "unhandled_jobs"
+                        difference, integer=integer_value
                     ),
-                    status,
+                    value_status,
                 )
             )
-            values_passed = values_passed and test_value <= expected_value
+            values_passed = values_passed and value_status != "FAILED"
 
         table_rows = [
-            ("metric", "test", "expected", "difference", "status"),
+            (
+                "metric",
+                "test",
+                "expected\n(raw)",
+                "expected\n(tolerance)",
+                "difference\n(raw)",
+                "status",
+            ),
             *rows,
         ]
         report_parts.append(table_rows)
@@ -375,8 +458,13 @@ def create_comparison_report(
     tables = [part for part in report_parts if isinstance(part, list)]
     column_widths = (
         [
-            max(len(row[column]) for table in tables for row in table)
-            for column in range(5)
+            max(
+                len(line)
+                for table in tables
+                for row in table
+                for line in row[column].splitlines()
+            )
+            for column in range(len(tables[0][0]))
         ]
         if tables
         else []
@@ -388,12 +476,18 @@ def create_comparison_report(
             report_lines.append(part)
             continue
         for row_index, row in enumerate(part):
-            report_lines.append(
-                "  ".join(
-                    value.ljust(column_widths[column])
-                    for column, value in enumerate(row)
-                ).rstrip()
-            )
+            cell_lines = [value.splitlines() or [""] for value in row]
+            for line_index in range(max(len(lines) for lines in cell_lines)):
+                report_lines.append(
+                    "  ".join(
+                        (
+                            lines[line_index]
+                            if line_index < len(lines)
+                            else ""
+                        ).ljust(column_widths[column])
+                        for column, lines in enumerate(cell_lines)
+                    ).rstrip()
+                )
             if row_index == 0:
                 report_lines.append(
                     "  ".join("-" * width for width in column_widths)
@@ -415,6 +509,21 @@ def main(arguments: list[str] | None = None) -> int:
         return 2
     if args.poll_interval <= 0:
         print("Error: poll interval must be greater than zero.", file=sys.stderr)
+        return 2
+    tolerance_percents = {
+        "calculation_time": args.calculation_time_tolerance_percent,
+        "totalDistance": args.total_distance_tolerance_percent,
+        "totalValue": args.total_value_tolerance_percent,
+        "unhandled_jobs": args.unhandled_jobs_tolerance_percent,
+    }
+    if any(
+        not math.isfinite(value) or value < 0
+        for value in tolerance_percents.values()
+    ):
+        print(
+            "Error: tolerance percentages must be finite and non-negative.",
+            file=sys.stderr,
+        )
         return 2
     if not args.base_url.strip():
         print("Error: base URL must not be empty.", file=sys.stderr)
@@ -514,7 +623,10 @@ def main(arguments: list[str] | None = None) -> int:
 
     try:
         report_file, comparison_failed = create_comparison_report(
-            input_files, run_folder, args.json_data_folder
+            input_files,
+            run_folder,
+            args.json_data_folder,
+            tolerance_percents,
         )
         print(f"\nSaved comparison report: {display_path(report_file)}")
     except OSError as error:

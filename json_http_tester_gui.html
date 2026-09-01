@@ -124,6 +124,10 @@
 
     input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px #67e8b424; }
 
+    .tolerance-title { margin: 2px 0 8px; color: var(--text); font-size: 13px; font-weight: 800; }
+    .tolerance-help { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+    .tolerance-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+
     .run-button {
       width: 100%;
       margin-top: 5px;
@@ -440,6 +444,22 @@
           <label>Base URL
             <input id="base-url" name="base_url" type="url" required>
           </label>
+          <p class="tolerance-title">Allowed error (%)</p>
+          <p class="tolerance-help">A test value may exceed its expected value by this percentage.</p>
+          <div class="tolerance-grid">
+            <label>Calculation time
+              <input name="calculation_time_tolerance_percent" type="number" min="0" step="any" required>
+            </label>
+            <label>Total distance
+              <input name="total_distance_tolerance_percent" type="number" min="0" step="any" required>
+            </label>
+            <label>Total value
+              <input name="total_value_tolerance_percent" type="number" min="0" step="any" required>
+            </label>
+            <label>Unhandled jobs
+              <input name="unhandled_jobs_tolerance_percent" type="number" min="0" step="any" required>
+            </label>
+          </div>
           <button id="run-button" class="run-button" type="submit">Start test run</button>
           <p id="error" class="error" role="alert"></p>
         </form>
@@ -536,6 +556,7 @@
 
   <script>
     const form = document.querySelector('#options-form');
+    const toleranceInputs = form.querySelectorAll('.tolerance-grid input');
     const runButton = document.querySelector('#run-button');
     const statusBadge = document.querySelector('#status');
     const consoleView = document.querySelector('#console');
@@ -578,6 +599,9 @@
     const visibleRouteLayers = new Map();
     const selectedTestTypes = new Set();
     const selectedResultFolders = new Set();
+
+    toleranceInputs.forEach(input =>
+      input.addEventListener('click', () => input.select()));
 
     function ensureMap() {
       if (routeMap) return true;

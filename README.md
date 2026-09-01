@@ -42,9 +42,9 @@ The Runner has separate allowed-error percentages for calculation time, total
 distance, total value, and unhandled jobs. Each defaults to zero. A metric passes
 when its test value is no greater than the expected value plus that percentage;
 for example, an expected value of 100 with a 10% allowance passes through 110.
-The comparison report shows both the raw and tolerance-adjusted expected values,
-the raw difference, and a status for every metric. Values at or below the raw
-expected value show `PASSED`; values above raw but within the allowance show
+The comparison report shows the expected value, tolerance limit, difference,
+and a status for every metric. Values at or below the expected value show
+`PASSED`; values above expected but within the allowance show
 `PASSED (WITH TOLERANCE)`; values above the allowance show `FAILED`.
 When a run creates `result.txt`, the Live progress header displays the overall
 `PASSED` or `FAILED` value read from that file. **Open result** then becomes

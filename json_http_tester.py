@@ -437,9 +437,9 @@ def create_comparison_report(
             (
                 "metric",
                 "test",
-                "expected\n(raw)",
-                "expected\n(tolerance)",
-                "difference\n(raw)",
+                "expected",
+                "tolerance",
+                "difference",
                 "status",
             ),
             *rows,

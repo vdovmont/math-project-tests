@@ -355,7 +355,7 @@ def create_comparison_report(
                     status,
                 )
             )
-            values_passed = values_passed and test_value >= expected_value
+            values_passed = values_passed and test_value <= expected_value
 
         table_rows = [
             ("metric", "test", "expected", "difference", "status"),

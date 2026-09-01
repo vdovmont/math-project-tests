@@ -494,6 +494,18 @@ def get_file_root(root_name: str) -> tuple[str, Path]:
     return label, root.resolve()
 
 
+def create_required_folders() -> None:
+    for root_name in FILE_ROOTS:
+        label, root = get_file_root(root_name)
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            raise OSError(
+                f"Could not create {label.lower()} folder "
+                f"'{tester.display_path(root)}': {error}"
+            ) from error
+
+
 def resolve_file_browser_path(root_name: str, relative_path: str) -> tuple[str, Path, Path]:
     label, root = get_file_root(root_name)
     candidate = (root / relative_path).resolve()
@@ -1237,6 +1249,12 @@ def main() -> int:
     except ValueError as error:
         print(f"Error: {error}", file=sys.stderr)
         return 2
+
+    try:
+        create_required_folders()
+    except OSError as error:
+        print(error, file=sys.stderr)
+        return 1
 
     try:
         server = ThreadingHTTPServer((host, port), GuiRequestHandler)

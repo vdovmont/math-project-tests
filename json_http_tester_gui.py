@@ -803,9 +803,12 @@ def read_result_summary(report_path: Path, configured_tests_folder: Path) -> tup
 
     with resolved_report.open("r", encoding="utf-8") as file:
         first_line = file.readline().strip()
+        second_line = file.readline().strip()
     match = re.fullmatch(r"Overall test results?:\s*(PASSED|FAILED)", first_line)
+    if match is None and re.fullmatch(r"Overall test results?:", first_line):
+        match = re.fullmatch(r"(PASSED|FAILED)", second_line)
     if match is None:
-        raise ValueError("result.txt has no valid overall status on its first line.")
+        raise ValueError("result.txt has no valid overall status at the top.")
     return match.group(1), resolved_report.relative_to(tests_root).as_posix()
 
 

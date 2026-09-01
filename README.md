@@ -49,8 +49,8 @@ defaults. The **Default** and **Previous** buttons switch profiles and are disab
 when the form already matches that profile. Unsaved edits enable both available
 profile buttons.
 The comparison report shows the expected value, tolerance limit, difference,
-and a status for every metric. Values at or below the expected value show
-`PASSED`; values above expected but within the allowance show
+and a status for every metric. Values at or below the expected value show a `✓`;
+values above expected but within the allowance show
 `PASSED (WITH TOLERANCE)`; values above the allowance show `FAILED`.
 When a run creates `result.txt`, the Live progress header displays the overall
 `PASSED` or `FAILED` value read from that file. **Open result** then becomes

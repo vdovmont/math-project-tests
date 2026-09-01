@@ -33,6 +33,7 @@ CALCULATION_TIME_TOLERANCE_PERCENT = 0.0
 TOTAL_DISTANCE_TOLERANCE_PERCENT = 0.0
 TOTAL_VALUE_TOLERANCE_PERCENT = 0.0
 UNHANDLED_JOBS_TOLERANCE_PERCENT = 0.0
+PASS_MARK = "✓"
 
 TOLERANCE_PERCENT_DEFAULTS = {
     "calculation_time": CALCULATION_TIME_TOLERANCE_PERCENT,
@@ -334,7 +335,7 @@ def create_comparison_report(
 ) -> tuple[Path, bool]:
     """Compare generated test JSONs with expected output JSONs."""
     tolerances = TOLERANCE_PERCENT_DEFAULTS | (tolerance_percents or {})
-    # The first line is filled after all comparisons determine the overall result.
+    # The leading status lines are filled after all comparisons finish.
     report_parts: list[
         str | list[tuple[str, str, str, str, str, str]]
     ] = [
@@ -400,7 +401,7 @@ def create_comparison_report(
                 f"{format_number(expected_time)}s",
                 f"{format_number(tolerated_time)}s",
                 format_difference(time_difference, suffix="s"),
-                time_status,
+                PASS_MARK if time_status == "PASSED" else time_status,
             )
         ]
         values_passed = time_status != "FAILED"
@@ -428,7 +429,7 @@ def create_comparison_report(
                     format_difference(
                         difference, integer=integer_value
                     ),
-                    value_status,
+                    PASS_MARK if value_status == "PASSED" else value_status,
                 )
             )
             values_passed = values_passed and value_status != "FAILED"
@@ -453,7 +454,8 @@ def create_comparison_report(
         comparison_failed = comparison_failed or not values_passed
 
     overall_result = "FAILED" if comparison_failed else "PASSED"
-    report_parts[0] = f"Overall test results: {overall_result}"
+    report_parts[0] = "Overall test results:"
+    report_parts[1] = f"    {overall_result}"
 
     tables = [part for part in report_parts if isinstance(part, list)]
     column_widths = (

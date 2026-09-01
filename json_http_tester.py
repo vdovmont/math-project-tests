@@ -253,37 +253,53 @@ def format_number(value: int | float) -> str:
     return str(value)
 
 
+def format_difference(
+    value: int | float, *, suffix: str = "", integer: bool = False
+) -> str:
+    rounded_value = round(value) if integer else round(value, 1)
+    if rounded_value == 0:
+        return "0"
+    if integer:
+        return f"{value:+.0f}"
+    return f"{value:+.1f}{suffix}"
+
+
 def create_comparison_report(
     input_files: list[Path], run_folder: Path, json_data_folder: Path
 ) -> tuple[Path, bool]:
     """Compare generated test JSONs with expected output JSONs."""
     # The first line is filled after all comparisons determine the overall result.
-    report_lines = ["", "", "", ""]
+    report_parts: list[str | list[tuple[str, str, str, str, str]]] = [
+        "",
+        "",
+        "",
+        "",
+    ]
     comparison_failed = False
 
     for input_file in input_files:
         base_name = input_file.name.removesuffix("-input.json")
         test_file = run_folder / f"{base_name}-test.json"
         expected_file = json_data_folder / f"{base_name}-output.json"
-        report_lines.append(f"[{base_name}]")
-        status_line_index = len(report_lines)
-        report_lines.append("")
-        report_lines.append("")
+        report_parts.append(f"[{base_name}]")
+        status_line_index = len(report_parts)
+        report_parts.append("")
+        report_parts.append("")
 
         if not test_file.is_file():
-            report_lines[status_line_index] = "    FAILED"
-            report_lines.append(
+            report_parts[status_line_index] = "    FAILED"
+            report_parts.append(
                 f"ERROR: test result is missing: {display_path(test_file)}"
             )
-            report_lines.extend(("", "", ""))
+            report_parts.extend(("", "", ""))
             comparison_failed = True
             continue
         if not expected_file.is_file():
-            report_lines[status_line_index] = "    FAILED"
-            report_lines.append(
+            report_parts[status_line_index] = "    FAILED"
+            report_parts.append(
                 f"ERROR: expected output is missing: {display_path(expected_file)}"
             )
-            report_lines.extend(("", "", ""))
+            report_parts.extend(("", "", ""))
             comparison_failed = True
             continue
 
@@ -293,9 +309,9 @@ def create_comparison_report(
             with expected_file.open("r", encoding="utf-8") as file:
                 expected_metrics = extract_result_metrics(json.load(file))
         except (OSError, json.JSONDecodeError, ValueError) as error:
-            report_lines[status_line_index] = "    FAILED"
-            report_lines.append(f"ERROR: {error}")
-            report_lines.extend(("", "", ""))
+            report_parts[status_line_index] = "    FAILED"
+            report_parts.append(f"ERROR: {error}")
+            report_parts.extend(("", "", ""))
             comparison_failed = True
             continue
 
@@ -314,7 +330,7 @@ def create_comparison_report(
                 "Calculation time",
                 f"{format_number(test_time)}s",
                 f"{format_number(expected_time)}s",
-                f"{time_difference:+.15g}s",
+                format_difference(time_difference, suffix="s"),
                 time_status,
             )
         ]
@@ -333,7 +349,9 @@ def create_comparison_report(
                     label,
                     format_number(test_value),
                     format_number(expected_value),
-                    f"{difference:+.15g}",
+                    format_difference(
+                        difference, integer=key == "unhandled_jobs"
+                    ),
                     status,
                 )
             )
@@ -343,11 +361,33 @@ def create_comparison_report(
             ("metric", "test", "expected", "difference", "status"),
             *rows,
         ]
-        column_widths = [
-            max(len(row[column]) for row in table_rows)
-            for column in range(len(table_rows[0]))
+        report_parts.append(table_rows)
+
+        report_parts[status_line_index] = (
+            "    PASSED" if values_passed else "    FAILED"
+        )
+        report_parts.extend(("", "", ""))
+        comparison_failed = comparison_failed or not values_passed
+
+    overall_result = "FAILED" if comparison_failed else "PASSED"
+    report_parts[0] = f"Overall test results: {overall_result}"
+
+    tables = [part for part in report_parts if isinstance(part, list)]
+    column_widths = (
+        [
+            max(len(row[column]) for table in tables for row in table)
+            for column in range(5)
         ]
-        for row_index, row in enumerate(table_rows):
+        if tables
+        else []
+    )
+
+    report_lines: list[str] = []
+    for part in report_parts:
+        if isinstance(part, str):
+            report_lines.append(part)
+            continue
+        for row_index, row in enumerate(part):
             report_lines.append(
                 "  ".join(
                     value.ljust(column_widths[column])
@@ -358,15 +398,6 @@ def create_comparison_report(
                 report_lines.append(
                     "  ".join("-" * width for width in column_widths)
                 )
-
-        report_lines[status_line_index] = (
-            "    PASSED" if values_passed else "    FAILED"
-        )
-        report_lines.extend(("", "", ""))
-        comparison_failed = comparison_failed or not values_passed
-
-    overall_result = "FAILED" if comparison_failed else "PASSED"
-    report_lines[0] = f"Overall test results: {overall_result}"
 
     report_file = run_folder / "result.txt"
     with report_file.open("w", encoding="utf-8") as file:

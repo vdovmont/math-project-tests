@@ -42,6 +42,12 @@ The Runner has separate allowed-error percentages for calculation time, total
 distance, total value, and unhandled jobs. Each defaults to zero. A metric passes
 when its test value is no greater than the expected value plus that percentage;
 for example, an expected value of 100 with a 10% allowance passes through 110.
+The Base URL and percentage fields are saved only when a test run starts, in
+`.json_http_tester_gui_previous.json` in the launch directory. The GUI loads that
+previous profile on its next start; if none exists, it loads the hard-coded
+defaults. The **Default** and **Previous** buttons switch profiles and are disabled
+when the form already matches that profile. Unsaved edits enable both available
+profile buttons.
 The comparison report shows the expected value, tolerance limit, difference,
 and a status for every metric. Values at or below the expected value show
 `PASSED`; values above expected but within the allowance show

@@ -2,3 +2,4 @@
 /json-data/
 /tests/
 /__pycache__/
+/.json_http_tester_gui_previous.json*

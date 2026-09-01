@@ -100,6 +100,10 @@
 
     form { padding: 22px; }
     h2 { margin: 0 0 18px; font-size: 17px; }
+    .options-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+    .options-heading h2 { margin: 0; }
+    .profile-buttons { display: flex; gap: 6px; }
+    .profile-buttons .small-button { padding: 5px 8px; font-size: 12px; }
 
     label {
       display: block;
@@ -440,7 +444,13 @@
       <div class="layout">
       <section class="panel">
         <form id="options-form">
-          <h2>Run options</h2>
+          <div class="options-heading">
+            <h2>Run options</h2>
+            <div class="profile-buttons">
+              <button id="default-options" class="small-button" type="button" disabled>Default</button>
+              <button id="previous-options" class="small-button" type="button" disabled>Previous</button>
+            </div>
+          </div>
           <label>Base URL
             <input id="base-url" name="base_url" type="url" required>
           </label>
@@ -557,6 +567,8 @@
   <script>
     const form = document.querySelector('#options-form');
     const toleranceInputs = form.querySelectorAll('.tolerance-grid input');
+    const defaultOptionsButton = document.querySelector('#default-options');
+    const previousOptionsButton = document.querySelector('#previous-options');
     const runButton = document.querySelector('#run-button');
     const statusBadge = document.querySelector('#status');
     const consoleView = document.querySelector('#console');
@@ -596,12 +608,52 @@
     let testRunRunning = false;
     let pendingDeleteToken = null;
     let routeMap = null;
+    let defaultOptions = null;
+    let previousOptions = null;
     const visibleRouteLayers = new Map();
     const selectedTestTypes = new Set();
     const selectedResultFolders = new Set();
 
     toleranceInputs.forEach(input =>
       input.addEventListener('click', () => input.select()));
+
+    const optionFieldNames = [
+      'base_url',
+      ...Array.from(toleranceInputs, input => input.name),
+    ];
+
+    function applyOptionProfile(profile) {
+      if (!profile) return;
+      for (const name of optionFieldNames) {
+        const input = form.elements.namedItem(name);
+        input.value = profile[name];
+      }
+      updateProfileButtons();
+    }
+
+    function profileMatchesCurrentValues(profile) {
+      if (!profile) return false;
+      return optionFieldNames.every(name => {
+        const value = form.elements.namedItem(name).value;
+        if (name === 'base_url') return value === String(profile[name]);
+        return value !== '' && Number(value) === Number(profile[name]);
+      });
+    }
+
+    function updateProfileButtons() {
+      defaultOptionsButton.disabled = profileMatchesCurrentValues(defaultOptions);
+      previousOptionsButton.disabled =
+        !previousOptions || profileMatchesCurrentValues(previousOptions);
+      previousOptionsButton.title = previousOptions
+        ? 'Load the options used for the last test run.'
+        : 'No previous test-run options have been saved yet.';
+    }
+
+    form.addEventListener('input', updateProfileButtons);
+    defaultOptionsButton.addEventListener('click', () =>
+      applyOptionProfile(defaultOptions));
+    previousOptionsButton.addEventListener('click', () =>
+      applyOptionProfile(previousOptions));
 
     function ensureMap() {
       if (routeMap) return true;
@@ -1089,10 +1141,10 @@
     async function loadDefaults() {
       const response = await fetch('/api/config');
       const config = await response.json();
-      for (const [name, value] of Object.entries(config)) {
-        const input = form.elements.namedItem(name);
-        if (input) input.value = value;
-      }
+      if (!response.ok) throw new Error(config.error || 'Could not load run options.');
+      defaultOptions = config.default;
+      previousOptions = config.previous;
+      applyOptionProfile(previousOptions || defaultOptions);
     }
 
     async function pollStatus() {
@@ -1165,6 +1217,8 @@
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Could not start test run.');
+        previousOptions = data.previous_options;
+        updateProfileButtons();
         runId = data.run_id;
         logIndex = 0;
         consoleView.textContent = '';

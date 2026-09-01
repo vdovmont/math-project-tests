@@ -65,6 +65,11 @@ TOLERANCE_FIELDS = (
         tester.UNHANDLED_JOBS_TOLERANCE_PERCENT,
     ),
 )
+PROFILE_OPTION_NAMES = (
+    "base_url",
+    *(option_name for option_name, _, _, _ in TOLERANCE_FIELDS),
+)
+PREVIOUS_OPTIONS_FILE = Path.cwd() / ".json_http_tester_gui_previous.json"
 DELETE_PREVIEWS: dict[str, dict[str, object]] = {}
 DELETE_PREVIEW_LOCK = threading.Lock()
 
@@ -101,6 +106,7 @@ class RunState:
             self.expected_time_seconds = calculate_expected_time(
                 Path(str(options["json_data_folder"]))
             )
+            save_previous_option_profile(options)
             self.running = True
             self.logs = []
             self.exit_code = None
@@ -524,6 +530,54 @@ def validate_options(data: object) -> dict[str, object]:
         "poll_interval": tester.STATE_POLL_INTERVAL_SECONDS,
         **tolerances,
     }
+
+
+def default_option_profile() -> dict[str, object]:
+    profile: dict[str, object] = {"base_url": tester.BASE_URL}
+    profile.update(
+        {
+            option_name: default
+            for option_name, _, _, default in TOLERANCE_FIELDS
+        }
+    )
+    return profile
+
+
+def option_profile(options: dict[str, object]) -> dict[str, object]:
+    return {name: options[name] for name in PROFILE_OPTION_NAMES}
+
+
+def load_previous_option_profile() -> dict[str, object] | None:
+    try:
+        with PREVIOUS_OPTIONS_FILE.open("r", encoding="utf-8") as file:
+            saved_data = json.load(file)
+        return option_profile(validate_options(saved_data))
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+        print(
+            f"Could not load previous GUI options from "
+            f"'{tester.display_path(PREVIOUS_OPTIONS_FILE)}': {error}",
+            file=sys.stderr,
+        )
+        return None
+
+
+def save_previous_option_profile(options: dict[str, object]) -> None:
+    temporary_file = PREVIOUS_OPTIONS_FILE.with_suffix(
+        PREVIOUS_OPTIONS_FILE.suffix + ".tmp"
+    )
+    try:
+        with temporary_file.open("w", encoding="utf-8", newline="") as file:
+            json.dump(option_profile(options), file, indent=2, ensure_ascii=False)
+            file.write("\n")
+        temporary_file.replace(PREVIOUS_OPTIONS_FILE)
+    except OSError:
+        try:
+            temporary_file.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
 
 def get_file_root(root_name: str) -> tuple[str, Path]:
@@ -1111,14 +1165,12 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/config":
-            config: dict[str, object] = {"base_url": tester.BASE_URL}
-            config.update(
+            self.send_json(
                 {
-                    option_name: default
-                    for option_name, _, _, default in TOLERANCE_FIELDS
+                    "default": default_option_profile(),
+                    "previous": load_previous_option_profile(),
                 }
             )
-            self.send_json(config)
             return
 
         if parsed.path in {"/api/files", "/api/file"}:
@@ -1215,6 +1267,7 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
                 options = validate_options(data)
                 RUN_STATE.start(options)
                 result = RUN_STATE.snapshot(0)
+                result["previous_options"] = option_profile(options)
                 status = HTTPStatus.ACCEPTED
             elif request_path == "/api/stop":
                 result = RUN_STATE.stop()

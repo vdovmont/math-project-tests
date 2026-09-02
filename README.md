@@ -76,6 +76,11 @@ values above expected but within the allowance show
 When a run creates `result.txt`, the Live progress header displays the overall
 `PASSED` or `FAILED` value read from that file. **Open result** then becomes
 available and opens the report directly in the read-only JSON files viewer.
+The live console also shows weighted overall progress below the elapsed time.
+Each enabled group is weighted by the calculation time in its expected-output
+file. A leading `Processing N%` state advances progress within the active group;
+states beginning with `Task in queue` leave progress unchanged until processing
+resumes.
 
 The separate **Map** tab groups files by their shared name before the
 `-input.json`, `-output.json`, and `-test.json` suffixes. Expected and historical

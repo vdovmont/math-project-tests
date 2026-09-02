@@ -35,6 +35,11 @@ MAX_UPLOAD_REQUEST_BODY_BYTES = (MAX_UPLOAD_FILE_BYTES * 4) + (1024 * 1024)
 DELETE_PREVIEW_TTL_SECONDS = 300
 EXPECTED_FINALIZATION_SECONDS = 10.0
 DISPLAY_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+TEST_GROUP_HEADER_PATTERN = re.compile(r"^=== (.+)-input\.json ===$")
+PROCESSING_PERCENT_PATTERN = re.compile(
+    r"^Processing\s+([-+]?(?:\d+(?:\.\d*)?|\.\d+))%",
+    re.IGNORECASE,
+)
 FILE_ROOTS = {
     "json-data": ("JSON data", tester.JSON_DATA_FOLDER),
     "tests": ("Tests", tester.TESTS_FOLDER),
@@ -99,6 +104,10 @@ class RunState:
         self.progress_active = False
         self.progress_console_width = 0
         self.expected_time_seconds: float | None = None
+        self.expected_test_times: dict[str, float] = {}
+        self.completed_test_types: set[str] = set()
+        self.active_test_type: str | None = None
+        self.progress_percentage = 0.0
         self.started_monotonic: float | None = None
         self.elapsed_time_seconds: float | None = None
         self.process: subprocess.Popen[bytes] | None = None
@@ -115,9 +124,13 @@ class RunState:
         with self.lock:
             if self.running:
                 raise RuntimeError("A test run is already in progress.")
-            self.expected_time_seconds = calculate_expected_time(
+            self.expected_test_times = load_expected_test_times(
                 Path(str(options["json_data_folder"])),
-                list(options["enabled_test_types"]),
+                [str(name) for name in options["enabled_test_types"]],
+            )
+            self.expected_time_seconds = (
+                sum(self.expected_test_times.values())
+                + EXPECTED_FINALIZATION_SECONDS
             )
             save_previous_option_profile(options)
             self.running = True
@@ -126,6 +139,9 @@ class RunState:
             self.started_at = datetime.now().strftime(DISPLAY_DATETIME_FORMAT)
             self.started_monotonic = time.monotonic()
             self.elapsed_time_seconds = 0.0
+            self.completed_test_types = set()
+            self.active_test_type = None
+            self.progress_percentage = 0.0
             self.finished_at = None
             self.overall_status = None
             self.last_result_path = None
@@ -161,6 +177,11 @@ class RunState:
                 self.active_query = int(query_match.group(1))
             elif line.startswith("Saved result: "):
                 self.active_query = None
+                self._complete_active_test_type()
+            group_match = TEST_GROUP_HEADER_PATTERN.fullmatch(line)
+            if group_match is not None:
+                self._complete_active_test_type()
+                self.active_test_type = group_match.group(1)
             folder_prefix = "Created test-run folder: "
             if line.startswith(folder_prefix):
                 displayed_folder = Path(line.removeprefix(folder_prefix))
@@ -182,8 +203,37 @@ class RunState:
             else:
                 self.logs.append(line)
                 self.progress_active = True
+            processing_match = PROCESSING_PERCENT_PATTERN.match(line)
+            if processing_match is not None:
+                processing_percent = min(
+                    100.0, max(0.0, float(processing_match.group(1)))
+                )
+                self._update_weighted_progress(processing_percent)
         self.progress_console_width = max(self.progress_console_width, len(line))
         print(f"\r{line.ljust(self.progress_console_width)}", end="", flush=True)
+
+    def _complete_active_test_type(self) -> None:
+        if self.active_test_type is None:
+            return
+        self.completed_test_types.add(self.active_test_type)
+        self.active_test_type = None
+        self._update_weighted_progress(0.0)
+
+    def _update_weighted_progress(self, processing_percent: float) -> None:
+        total_expected_time = sum(self.expected_test_times.values())
+        if total_expected_time <= 0:
+            return
+        completed_time = sum(
+            self.expected_test_times.get(name, 0.0)
+            for name in self.completed_test_types
+        )
+        active_time = self.expected_test_times.get(self.active_test_type or "", 0.0)
+        weighted_progress = (
+            completed_time + active_time * processing_percent / 100.0
+        ) / total_expected_time * 100.0
+        self.progress_percentage = max(
+            self.progress_percentage, min(100.0, weighted_progress)
+        )
 
     def _capture_process_output(self, stream: object) -> None:
         pending = bytearray()
@@ -318,6 +368,8 @@ class RunState:
                 self.exit_code = exit_code
                 self.finished_at = datetime.now().strftime(DISPLAY_DATETIME_FORMAT)
                 self.overall_status = overall_status
+                if not stop_requested:
+                    self.progress_percentage = 100.0
                 if relative_report_path is not None:
                     self.last_result_path = relative_report_path
             self.worker_finished.set()
@@ -414,6 +466,7 @@ class RunState:
                 "result_path": self.last_result_path,
                 "expected_time_seconds": self.expected_time_seconds,
                 "elapsed_time_seconds": elapsed_time_seconds,
+                "progress_percentage": self.progress_percentage,
                 "stopping": self.stopping,
                 "stopped": self.stopped,
                 "active_query": self.active_query,
@@ -424,11 +477,11 @@ class RunState:
 RUN_STATE = RunState()
 
 
-def calculate_expected_time(
+def load_expected_test_times(
     json_data_folder: Path, test_types: list[str] | None = None
-) -> float:
-    """Sum expected calculation times and allow ten seconds for finalization."""
-    total = EXPECTED_FINALIZATION_SECONDS
+) -> dict[str, float]:
+    """Load expected calculation time for each selected test group."""
+    expected_times: dict[str, float] = {}
     selected_types = set(test_types) if test_types is not None else None
     for output_file in sorted(json_data_folder.glob("*-output.json")):
         test_type = output_file.name.removesuffix("-output.json")
@@ -442,8 +495,24 @@ def calculate_expected_time(
                 f"Could not read expected calculation time from "
                 f"'{output_file.name}': {error}"
             ) from error
-        total += float(metrics["calculation_time"])
-    return total
+        calculation_time = float(metrics["calculation_time"])
+        if not math.isfinite(calculation_time) or calculation_time < 0:
+            raise ValueError(
+                f"Expected calculation time in '{output_file.name}' must be "
+                "finite and non-negative."
+            )
+        expected_times[test_type] = calculation_time
+    return expected_times
+
+
+def calculate_expected_time(
+    json_data_folder: Path, test_types: list[str] | None = None
+) -> float:
+    """Sum selected expected calculation times and finalization allowance."""
+    return (
+        sum(load_expected_test_times(json_data_folder, test_types).values())
+        + EXPECTED_FINALIZATION_SECONDS
+    )
 
 
 def validate_uploaded_json_file(

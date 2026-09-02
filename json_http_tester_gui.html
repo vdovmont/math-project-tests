@@ -1490,7 +1490,10 @@
           };
           const expected = formatDuration(status.expected_time_seconds ?? 0, true);
           const elapsed = formatDuration(status.elapsed_time_seconds ?? 0);
-          const timingLines = `Expected time: ${expected}\nTime passed:   ${elapsed}`;
+          const progress = Math.round(Math.min(
+            100, Math.max(0, status.progress_percentage ?? 0)));
+          const timingLines =
+            `Expected time: ${expected}\nTime passed:   ${elapsed}\nProgress: ${progress}%`;
           const consoleText = `${status.logs.join('\n')}\n\n${timingLines}\n`;
           if (consoleView.textContent !== consoleText) consoleView.textContent = consoleText;
           if (stayAtBottom) consoleView.scrollTop = consoleView.scrollHeight;

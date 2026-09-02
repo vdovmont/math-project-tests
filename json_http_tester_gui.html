@@ -269,6 +269,11 @@
     .file-meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
     .empty-folder { padding: 24px; color: var(--muted); text-align: center; }
     .json-file-group { border-bottom: 1px solid var(--border); }
+    .json-results-separator {
+      height: 24px;
+      border-bottom: 1px solid var(--border);
+      background: color-mix(in srgb, var(--panel) 94%, transparent);
+    }
     .json-file-group > summary {
       padding: 11px 14px;
       cursor: pointer;
@@ -1272,6 +1277,12 @@
           for (const result of data.results) resultItems.append(makeSelectableResult(result));
           resultsGroup.append(resultItems);
           fileList.append(resultsGroup);
+          if (data.groups.length) {
+            const separator = document.createElement('div');
+            separator.className = 'json-results-separator';
+            separator.setAttribute('aria-hidden', 'true');
+            fileList.append(separator);
+          }
         }
 
         data.groups.forEach(group => {

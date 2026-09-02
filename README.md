@@ -48,8 +48,12 @@ previous profile on its next start; if none exists, it loads the hard-coded
 defaults. The **Default** and **Previous** buttons switch profiles and are disabled
 when the form already matches that profile. Unsaved edits enable both available
 profile buttons.
-The comparison report shows the expected value, tolerance limit, difference,
-and a status for every metric. Values at or below the expected value show a `✓`;
+The comparison report shows the expected value, tolerance limit, raw difference,
+percentage difference from the expected value, and a status for every metric.
+Percentage differences normally use one decimal place and use three when their
+absolute value is below 0.1%; exact zero differences show `0`. A percentage is
+shown as `N/A` when a nonzero test value is compared with an expected zero.
+Values at or below the expected value show a `✓`;
 values above expected but within the allowance show
 `PASSED (WITH TOLERANCE)`; values above the allowance show `FAILED`.
 When a run creates `result.txt`, the Live progress header displays the overall

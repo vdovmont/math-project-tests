@@ -298,6 +298,29 @@ def format_difference(
     return f"{value:+.1f}{suffix}"
 
 
+def format_percentage_difference(
+    test_value: int | float, expected_value: int | float
+) -> str:
+    difference = test_value - expected_value
+    if difference == 0:
+        return "0"
+    if expected_value == 0:
+        return "N/A"
+
+    percentage = difference / abs(expected_value) * 100
+    absolute_percentage = abs(percentage)
+    decimal_places = (
+        3
+        if absolute_percentage < 0.1
+        and not math.isclose(absolute_percentage, 0.1)
+        else 1
+    )
+    rounded_percentage = round(percentage, decimal_places)
+    if rounded_percentage == 0:
+        return f"{0:.{decimal_places}f}%"
+    return f"{percentage:+.{decimal_places}f}%"
+
+
 def value_is_within_tolerance(
     test_value: int | float,
     expected_value: int | float,
@@ -337,7 +360,7 @@ def create_comparison_report(
     tolerances = TOLERANCE_PERCENT_DEFAULTS | (tolerance_percents or {})
     # The leading status lines are filled after all comparisons finish.
     report_parts: list[
-        str | list[tuple[str, str, str, str, str, str]]
+        str | list[tuple[str, str, str, str, str, str, str]]
     ] = [
         "",
         "",
@@ -401,6 +424,7 @@ def create_comparison_report(
                 f"{format_number(expected_time)}s",
                 f"{format_number(tolerated_time)}s",
                 format_difference(time_difference, suffix="s"),
+                format_percentage_difference(test_time, expected_time),
                 PASS_MARK if time_status == "PASSED" else time_status,
             )
         ]
@@ -429,6 +453,7 @@ def create_comparison_report(
                     format_difference(
                         difference, integer=integer_value
                     ),
+                    format_percentage_difference(test_value, expected_value),
                     PASS_MARK if value_status == "PASSED" else value_status,
                 )
             )
@@ -441,6 +466,7 @@ def create_comparison_report(
                 "expected",
                 "tolerance",
                 "difference",
+                "difference\n(%)",
                 "status",
             ),
             *rows,

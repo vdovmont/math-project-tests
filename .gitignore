@@ -4,3 +4,4 @@
 /__pycache__/
 /.json_http_tester_gui_previous.json*
 /.json_http_tester_gui_profiles.json*
+/.json_http_tester_gui_test_selection.json*

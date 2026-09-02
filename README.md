@@ -26,6 +26,12 @@ group; test-run files follow in descending test-folder name order.
 The same tab also has a separate **Results** group containing every `result.txt`,
 ordered by its test-run folder name descending.
 
+Each test-group header has an **Enabled/Disabled** checkbox. Disabled groups stay
+visible in the file browser with muted styling but are skipped when a test run
+starts. New groups are enabled by default, and at least one group containing an
+input file must be enabled to start a run. The selections persist in
+`.json_http_tester_gui_test_selection.json` in the launch directory.
+
 All groups start collapsed. Use **Delete test type** to enter test-type selection
 mode, then select group headers to remove their input, expected-output, and
 matching test files. Use **Delete test results** to collapse the other groups,

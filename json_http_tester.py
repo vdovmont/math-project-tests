@@ -54,6 +54,12 @@ def parse_arguments(arguments: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--json-data-folder", type=Path, default=JSON_DATA_FOLDER)
     parser.add_argument("--tests-folder", type=Path, default=TESTS_FOLDER)
     parser.add_argument(
+        "--test-type",
+        dest="test_types",
+        action="append",
+        help="Run only this test type (repeat for multiple types).",
+    )
+    parser.add_argument(
         "--timeout", type=float, default=REQUEST_TIMEOUT_SECONDS
     )
     parser.add_argument(
@@ -615,7 +621,25 @@ def main(arguments: list[str] | None = None) -> int:
         )
         return 2
 
-    input_files = sorted(args.json_data_folder.glob("*-input.json"))
+    all_input_files = sorted(args.json_data_folder.glob("*-input.json"))
+    input_files = all_input_files
+    if args.test_types:
+        requested_types = set(args.test_types)
+        available_types = {
+            file.name.removesuffix("-input.json") for file in all_input_files
+        }
+        unknown_types = sorted(requested_types - available_types)
+        if unknown_types:
+            print(
+                f"Unknown test type(s): {', '.join(unknown_types)}",
+                file=sys.stderr,
+            )
+            return 2
+        input_files = [
+            file
+            for file in all_input_files
+            if file.name.removesuffix("-input.json") in requested_types
+        ]
     if not input_files:
         print(
             f"No *-input.json files found in: "

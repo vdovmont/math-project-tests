@@ -71,6 +71,7 @@ PROFILE_OPTION_NAMES = (
 )
 PREVIOUS_OPTIONS_FILE = Path.cwd() / ".json_http_tester_gui_previous.json"
 SAVED_PROFILES_FILE = Path.cwd() / ".json_http_tester_gui_profiles.json"
+TEST_SELECTION_FILE = Path.cwd() / ".json_http_tester_gui_test_selection.json"
 MAX_PROFILE_NAME_LENGTH = 80
 MAX_SAVED_PROFILES = 100
 DELETE_PREVIEWS: dict[str, dict[str, object]] = {}
@@ -78,6 +79,10 @@ DELETE_PREVIEW_LOCK = threading.Lock()
 
 
 class ProfileStorageError(Exception):
+    pass
+
+
+class TestSelectionStorageError(Exception):
     pass
 
 
@@ -111,7 +116,8 @@ class RunState:
             if self.running:
                 raise RuntimeError("A test run is already in progress.")
             self.expected_time_seconds = calculate_expected_time(
-                Path(str(options["json_data_folder"]))
+                Path(str(options["json_data_folder"])),
+                list(options["enabled_test_types"]),
             )
             save_previous_option_profile(options)
             self.running = True
@@ -248,6 +254,10 @@ class RunState:
         ]
         for option_name, cli_name, _, _ in TOLERANCE_FIELDS:
             argument = [f"--{cli_name}", str(options[option_name])]
+            command.extend(argument)
+            display_command.extend(argument)
+        for test_type in options["enabled_test_types"]:
+            argument = ["--test-type", str(test_type)]
             command.extend(argument)
             display_command.extend(argument)
         self._append_log("> " + subprocess.list2cmdline(display_command))
@@ -414,10 +424,16 @@ class RunState:
 RUN_STATE = RunState()
 
 
-def calculate_expected_time(json_data_folder: Path) -> float:
+def calculate_expected_time(
+    json_data_folder: Path, test_types: list[str] | None = None
+) -> float:
     """Sum expected calculation times and allow ten seconds for finalization."""
     total = EXPECTED_FINALIZATION_SECONDS
+    selected_types = set(test_types) if test_types is not None else None
     for output_file in sorted(json_data_folder.glob("*-output.json")):
+        test_type = output_file.name.removesuffix("-output.json")
+        if selected_types is not None and test_type not in selected_types:
+            continue
         try:
             with output_file.open("r", encoding="utf-8") as file:
                 metrics = tester.extract_result_metrics(json.load(file))
@@ -529,12 +545,17 @@ def validate_options(data: object) -> dict[str, object]:
             )
         tolerances[option_name] = value
 
+    enabled_test_types = enabled_input_test_types()
+    if not enabled_test_types:
+        raise ValueError("Enable at least one test group before starting a run.")
+
     return {
         "base_url": base_url.strip(),
         "json_data_folder": str(tester.JSON_DATA_FOLDER),
         "tests_folder": str(tester.TESTS_FOLDER),
         "timeout": tester.REQUEST_TIMEOUT_SECONDS,
         "poll_interval": tester.STATE_POLL_INTERVAL_SECONDS,
+        "enabled_test_types": enabled_test_types,
         **tolerances,
     }
 
@@ -732,6 +753,99 @@ def create_required_folders() -> None:
             ) from error
 
 
+def load_disabled_test_types() -> set[str]:
+    try:
+        with TEST_SELECTION_FILE.open("r", encoding="utf-8") as file:
+            saved_data = json.load(file)
+    except FileNotFoundError:
+        return set()
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise TestSelectionStorageError(
+            f"Could not read test-group selection: {error}"
+        ) from error
+
+    if not isinstance(saved_data, dict) or saved_data.get("version") != 1:
+        raise TestSelectionStorageError(
+            "Test-group selection file has an unsupported format."
+        )
+    disabled = saved_data.get("disabled_test_types")
+    if not isinstance(disabled, list) or any(
+        not isinstance(name, str) or not name for name in disabled
+    ):
+        raise TestSelectionStorageError(
+            "Test-group selection file has an invalid disabled list."
+        )
+    return set(disabled)
+
+
+def write_disabled_test_types(disabled: set[str]) -> None:
+    temporary_file = TEST_SELECTION_FILE.with_suffix(
+        TEST_SELECTION_FILE.suffix + ".tmp"
+    )
+    payload = {
+        "version": 1,
+        "disabled_test_types": sorted(disabled, key=str.casefold),
+    }
+    try:
+        with temporary_file.open("w", encoding="utf-8", newline="") as file:
+            json.dump(payload, file, indent=2, ensure_ascii=False)
+            file.write("\n")
+        temporary_file.replace(TEST_SELECTION_FILE)
+    except OSError:
+        try:
+            temporary_file.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
+def available_test_type_names() -> set[str]:
+    _, json_root = get_file_root("json-data")
+    names: set[str] = set()
+    for suffix in ("-input.json", "-output.json"):
+        names.update(
+            file.name.removesuffix(suffix)
+            for file in json_root.glob(f"*{suffix}")
+            if file.is_file()
+        )
+    return names
+
+
+def enabled_input_test_types() -> list[str]:
+    _, json_root = get_file_root("json-data")
+    disabled = load_disabled_test_types()
+    return sorted(
+        (
+            file.name.removesuffix("-input.json")
+            for file in json_root.glob("*-input.json")
+            if file.is_file()
+            and file.name.removesuffix("-input.json") not in disabled
+        ),
+        key=str.casefold,
+    )
+
+
+def set_test_type_enabled(data: object) -> dict[str, object]:
+    if not isinstance(data, dict):
+        raise ValueError("Request body must be a JSON object.")
+    name = data.get("name")
+    enabled = data.get("enabled")
+    if not isinstance(name, str) or not name:
+        raise ValueError("Test-group name must not be empty.")
+    if not isinstance(enabled, bool):
+        raise ValueError("Enabled state must be true or false.")
+    if name not in available_test_type_names():
+        raise ValueError(f"Test group '{name}' does not exist.")
+
+    disabled = load_disabled_test_types()
+    if enabled:
+        disabled.discard(name)
+    else:
+        disabled.add(name)
+    write_disabled_test_types(disabled)
+    return {"name": name, "enabled": enabled}
+
+
 def resolve_file_browser_path(root_name: str, relative_path: str) -> tuple[str, Path, Path]:
     label, root = get_file_root(root_name)
     candidate = (root / relative_path).resolve()
@@ -825,12 +939,19 @@ def build_json_file_groups() -> dict[str, object]:
             f"Folder does not exist: {tester.display_path(tests_root)}"
         )
 
+    disabled_test_types = load_disabled_test_types()
     grouped: dict[str, dict[str, object]] = {}
 
     def group_for(base_name: str) -> dict[str, object]:
         return grouped.setdefault(
             base_name,
-            {"name": base_name, "input": None, "output": None, "tests": []},
+            {
+                "name": base_name,
+                "enabled": base_name not in disabled_test_types,
+                "input": None,
+                "output": None,
+                "tests": [],
+            },
         )
 
     for suffix, item_kind in (("-input.json", "input"), ("-output.json", "output")):
@@ -1357,6 +1478,11 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
             except FileNotFoundError as error:
                 self.send_json({"error": str(error)}, HTTPStatus.NOT_FOUND)
                 return
+            except TestSelectionStorageError as error:
+                self.send_json(
+                    {"error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR
+                )
+                return
             except OSError as error:
                 self.send_json(
                     {"error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR
@@ -1382,6 +1508,7 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
             "/api/start",
             "/api/stop",
             "/api/add-test-type",
+            "/api/test-type-enabled",
             "/api/delete-preview",
             "/api/delete",
             "/api/profile/save",
@@ -1429,7 +1556,9 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
                         )
                 if not isinstance(data, dict):
                     raise ValueError("Request body must be a JSON object.")
-                if request_path == "/api/add-test-type":
+                if request_path == "/api/test-type-enabled":
+                    result = set_test_type_enabled(data)
+                elif request_path == "/api/add-test-type":
                     result = add_test_type(data)
                 elif request_path == "/api/delete-preview":
                     result = make_deletion_preview(
@@ -1452,7 +1581,7 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
         except RuntimeError as error:
             self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
             return
-        except ProfileStorageError as error:
+        except (ProfileStorageError, TestSelectionStorageError) as error:
             self.send_json(
                 {"error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR
             )

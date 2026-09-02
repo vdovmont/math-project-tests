@@ -280,6 +280,41 @@
       font-weight: 800;
       overflow-wrap: anywhere;
     }
+    .test-group-summary-content {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: calc(100% - 18px);
+      vertical-align: middle;
+    }
+    .test-group-name { min-width: 0; flex: 1; }
+    .test-run-toggle {
+      display: inline-flex;
+      align-items: center;
+      flex: none;
+      gap: 6px;
+      margin-left: auto;
+      padding: 3px 8px;
+      border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+      border-radius: 999px;
+      color: var(--accent);
+      font-size: 11px;
+      line-height: 1.2;
+      cursor: pointer;
+      user-select: none;
+    }
+    .test-run-toggle input { width: auto; margin: 0; cursor: pointer; }
+    .json-file-group.test-disabled > summary {
+      background: color-mix(in srgb, var(--page) 62%, var(--panel));
+      color: var(--muted);
+    }
+    .json-file-group.test-disabled .json-file-items { opacity: 0.48; }
+    .json-file-group.test-disabled .test-run-toggle {
+      border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+      color: var(--danger);
+    }
+    .test-run-toggle:has(input:disabled) { cursor: not-allowed; opacity: 0.55; }
+    .test-run-toggle input:disabled { cursor: not-allowed; }
     .group-select { display: none; width: auto; margin: 0 8px 0 0; vertical-align: -1px; }
     .result-select { display: none; }
     .file-list.delete-select-types .group-select { display: inline-block; }
@@ -1184,6 +1219,9 @@
       addTestTypeButton.disabled = testRunRunning;
       deleteTestTypesButton.disabled = testRunRunning;
       deleteTestResultsButton.disabled = testRunRunning;
+      fileList.querySelectorAll('.test-enabled-toggle').forEach(toggle => {
+        toggle.disabled = testRunRunning || toggle.dataset.busy === 'true';
+      });
       deleteTestTypesButton.setAttribute(
         'aria-pressed', deleteSelectionMode === 'test-types' ? 'true' : 'false');
       deleteTestResultsButton.setAttribute(
@@ -1290,6 +1328,8 @@
           details.className = 'json-file-group';
           details.dataset.groupKind = 'test-type';
           const summary = document.createElement('summary');
+          const summaryContent = document.createElement('span');
+          summaryContent.className = 'test-group-summary-content';
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
           checkbox.className = 'group-select';
@@ -1301,8 +1341,52 @@
             updateDeleteButtons();
           });
           const groupName = document.createElement('span');
+          groupName.className = 'test-group-name';
           groupName.textContent = group.name;
-          summary.append(checkbox, groupName);
+          const toggleLabel = document.createElement('label');
+          toggleLabel.className = 'test-run-toggle';
+          toggleLabel.addEventListener('click', event => event.stopPropagation());
+          const enabledToggle = document.createElement('input');
+          enabledToggle.type = 'checkbox';
+          enabledToggle.className = 'test-enabled-toggle';
+          enabledToggle.setAttribute(
+            'aria-label', `Enable test group ${group.name} for test runs`);
+          const enabledText = document.createElement('span');
+
+          function applyEnabledState(enabled) {
+            group.enabled = enabled;
+            enabledToggle.checked = enabled;
+            details.classList.toggle('test-disabled', !enabled);
+            enabledText.textContent = enabled ? 'Enabled' : 'Disabled';
+            toggleLabel.title = enabled
+              ? 'This test group will run'
+              : 'This test group will be skipped';
+          }
+
+          applyEnabledState(Boolean(group.enabled));
+          enabledToggle.disabled = testRunRunning;
+          enabledToggle.addEventListener('change', async () => {
+            const requestedState = enabledToggle.checked;
+            enabledToggle.dataset.busy = 'true';
+            enabledToggle.disabled = true;
+            try {
+              const result = await fetchJson('/api/test-type-enabled', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: group.name, enabled: requestedState}),
+              });
+              applyEnabledState(Boolean(result.enabled));
+            } catch (error) {
+              applyEnabledState(!requestedState);
+              window.alert(error.message);
+            } finally {
+              enabledToggle.dataset.busy = 'false';
+              enabledToggle.disabled = testRunRunning;
+            }
+          });
+          toggleLabel.append(enabledToggle, enabledText);
+          summaryContent.append(checkbox, groupName, toggleLabel);
+          summary.append(summaryContent);
           details.append(summary);
 
           const items = document.createElement('div');

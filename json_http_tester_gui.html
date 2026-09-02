@@ -507,7 +507,7 @@
             <input id="base-url" name="base_url" type="url" required>
           </label>
           <p class="tolerance-title">Allowed error (%)</p>
-          <p class="tolerance-help">A test value may exceed its expected value by this percentage.</p>
+          <p class="tolerance-help">Most test values may exceed expected values; Jobs may fall below its expected taken count by this percentage.</p>
           <div class="tolerance-grid">
             <label>Calculation time
               <input name="calculation_time_tolerance_percent" type="number" min="0" step="any" required>
@@ -518,8 +518,8 @@
             <label>Total value
               <input name="total_value_tolerance_percent" type="number" min="0" step="any" required>
             </label>
-            <label>Unhandled jobs
-              <input name="unhandled_jobs_tolerance_percent" type="number" min="0" step="any" required>
+            <label>Jobs
+              <input name="jobs_tolerance_percent" type="number" min="0" step="any" required>
             </label>
           </div>
           <button id="run-button" class="run-button" type="submit">Start test run</button>

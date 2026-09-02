@@ -32,19 +32,22 @@ STATE_POLL_INTERVAL_SECONDS = 1.0
 CALCULATION_TIME_TOLERANCE_PERCENT = 0.0
 TOTAL_DISTANCE_TOLERANCE_PERCENT = 0.0
 TOTAL_VALUE_TOLERANCE_PERCENT = 0.0
-UNHANDLED_JOBS_TOLERANCE_PERCENT = 0.0
+JOBS_TOLERANCE_PERCENT = 0.0
 PASS_MARK = "✓"
 
 TOLERANCE_PERCENT_DEFAULTS = {
     "calculation_time": CALCULATION_TIME_TOLERANCE_PERCENT,
     "totalDistance": TOTAL_DISTANCE_TOLERANCE_PERCENT,
     "totalValue": TOTAL_VALUE_TOLERANCE_PERCENT,
-    "unhandled_jobs": UNHANDLED_JOBS_TOLERANCE_PERCENT,
+    "jobs": JOBS_TOLERANCE_PERCENT,
 }
 
 CALCULATION_TIME_PATTERN = re.compile(
     r"Calculation time:\s*"
     r"([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)\s*s"
+)
+JOBS_TAKEN_PATTERN = re.compile(
+    r"\b(\d+)\s*/\s*(\d+)\s+jobs\s+taken\b", re.IGNORECASE
 )
 
 
@@ -81,9 +84,10 @@ def parse_arguments(arguments: list[str] | None = None) -> argparse.Namespace:
         default=TOTAL_VALUE_TOLERANCE_PERCENT,
     )
     parser.add_argument(
-        "--unhandled-jobs-tolerance-percent",
+        "--jobs-tolerance-percent",
+        dest="jobs_tolerance_percent",
         type=float,
-        default=UNHANDLED_JOBS_TOLERANCE_PERCENT,
+        default=JOBS_TOLERANCE_PERCENT,
     )
     return parser.parse_args(arguments)
 
@@ -239,7 +243,6 @@ def find_result_object(data: object) -> dict[str, object]:
         "comment",
         "totalDistance",
         "totalValue",
-        "unhandledJobs",
     }
 
     if isinstance(data, dict):
@@ -259,11 +262,13 @@ def find_result_object(data: object) -> dict[str, object]:
 
     raise ValueError(
         "could not find a result object containing comment, totalDistance, "
-        "totalValue, and unhandledJobs"
+        "and totalValue"
     )
 
 
-def extract_result_metrics(data: object) -> dict[str, int | float]:
+def extract_result_metrics(
+    data: object,
+) -> dict[str, int | float | tuple[int, int]]:
     result = find_result_object(data)
 
     comment = result.get("comment")
@@ -274,15 +279,19 @@ def extract_result_metrics(data: object) -> dict[str, int | float]:
     if calculation_time_match is None:
         raise ValueError("'comment' has no calculation time")
 
-    unhandled_jobs = result.get("unhandledJobs")
-    if not isinstance(unhandled_jobs, list):
-        raise ValueError("field 'unhandledJobs' must be an array")
+    jobs_match = JOBS_TAKEN_PATTERN.search(comment)
+    if jobs_match is None:
+        raise ValueError("'comment' has no 'taken/total jobs taken' value")
+    jobs_taken = int(jobs_match.group(1))
+    jobs_total = int(jobs_match.group(2))
+    if jobs_taken > jobs_total:
+        raise ValueError("jobs taken cannot be greater than total jobs")
 
     return {
         "calculation_time": float(calculation_time_match.group(1)),
         "totalDistance": require_number(result, "totalDistance"),
         "totalValue": require_number(result, "totalValue"),
-        "unhandled_jobs": len(unhandled_jobs),
+        "jobs": (jobs_taken, jobs_total),
     }
 
 
@@ -308,12 +317,18 @@ def format_percentage_difference(
     test_value: int | float, expected_value: int | float
 ) -> str:
     difference = test_value - expected_value
+    return format_difference_percentage(difference, expected_value)
+
+
+def format_difference_percentage(
+    difference: int | float, denominator: int | float
+) -> str:
     if difference == 0:
         return "0"
-    if expected_value == 0:
+    if denominator == 0:
         return "N/A"
 
-    percentage = difference / abs(expected_value) * 100
+    percentage = difference / abs(denominator) * 100
     absolute_percentage = abs(percentage)
     decimal_places = (
         3
@@ -354,6 +369,28 @@ def comparison_status(
     if test_value <= tolerated_expected_value:
         return "PASSED (WITH TOLERANCE)"
     return "FAILED"
+
+
+def jobs_value_with_tolerance(
+    expected_jobs_taken: int, tolerance_percent: float
+) -> int:
+    return math.ceil(expected_jobs_taken / (1 + tolerance_percent / 100))
+
+
+def jobs_comparison_status(
+    test_jobs_taken: int,
+    expected_jobs_taken: int,
+    tolerated_jobs_taken: int,
+) -> str:
+    if test_jobs_taken >= expected_jobs_taken:
+        return "PASSED"
+    if test_jobs_taken >= tolerated_jobs_taken:
+        return "PASSED (WITH TOLERANCE)"
+    return "FAILED"
+
+
+def format_jobs(taken: int, total: int) -> str:
+    return f"{taken}/{total}"
 
 
 def create_comparison_report(
@@ -438,7 +475,6 @@ def create_comparison_report(
         for key, label in (
             ("totalDistance", "Total distance"),
             ("totalValue", "Total value"),
-            ("unhandled_jobs", "Unhandled jobs"),
         ):
             test_value = test_metrics[key]
             expected_value = expected_metrics[key]
@@ -449,21 +485,42 @@ def create_comparison_report(
             value_status = comparison_status(
                 test_value, expected_value, tolerated_expected
             )
-            integer_value = key == "unhandled_jobs"
             rows.append(
                 (
                     label,
-                    format_number(test_value, integer=integer_value),
-                    format_number(expected_value, integer=integer_value),
-                    format_number(tolerated_expected, integer=integer_value),
-                    format_difference(
-                        difference, integer=integer_value
-                    ),
+                    format_number(test_value),
+                    format_number(expected_value),
+                    format_number(tolerated_expected),
+                    format_difference(difference),
                     format_percentage_difference(test_value, expected_value),
                     PASS_MARK if value_status == "PASSED" else value_status,
                 )
             )
             values_passed = values_passed and value_status != "FAILED"
+
+        test_jobs_taken, test_jobs_total = test_metrics["jobs"]
+        expected_jobs_taken, expected_jobs_total = expected_metrics["jobs"]
+        jobs_difference = test_jobs_taken - expected_jobs_taken
+        tolerated_jobs_taken = jobs_value_with_tolerance(
+            expected_jobs_taken, tolerances["jobs"]
+        )
+        jobs_status = jobs_comparison_status(
+            test_jobs_taken, expected_jobs_taken, tolerated_jobs_taken
+        )
+        rows.append(
+            (
+                "Jobs",
+                format_jobs(test_jobs_taken, test_jobs_total),
+                format_jobs(expected_jobs_taken, expected_jobs_total),
+                format_jobs(tolerated_jobs_taken, expected_jobs_total),
+                format_difference(jobs_difference, integer=True),
+                format_difference_percentage(
+                    jobs_difference, expected_jobs_taken
+                ),
+                PASS_MARK if jobs_status == "PASSED" else jobs_status,
+            )
+        )
+        values_passed = values_passed and jobs_status != "FAILED"
 
         table_rows = [
             (
@@ -548,7 +605,7 @@ def main(arguments: list[str] | None = None) -> int:
         "calculation_time": args.calculation_time_tolerance_percent,
         "totalDistance": args.total_distance_tolerance_percent,
         "totalValue": args.total_value_tolerance_percent,
-        "unhandled_jobs": args.unhandled_jobs_tolerance_percent,
+        "jobs": args.jobs_tolerance_percent,
     }
     if any(
         not math.isfinite(value) or value < 0

@@ -45,7 +45,7 @@ and not already exist in `JSON_DATA_FOLDER`. Uploading is disabled during a run.
 
 The page has three tabs in this order: **Runner**, **JSON files**, and **Map**.
 The Runner has separate allowed-error percentages for calculation time, total
-distance, total value, and unhandled jobs. Each defaults to zero. A metric passes
+distance, total value, and jobs. Each defaults to zero. Most metrics pass
 when its test value is no greater than the expected value plus that percentage;
 for example, an expected value of 100 with a 10% allowance passes through 110.
 The Base URL and percentage fields are saved only when a test run starts. Previous
@@ -73,6 +73,10 @@ shown as `N/A` when a nonzero test value is compared with an expected zero.
 Values at or below the expected value show a `✓`;
 values above expected but within the allowance show
 `PASSED (WITH TOLERANCE)`; values above the allowance show `FAILED`.
+The Jobs metric is read from the result comment's `taken/total jobs taken` text
+and displays that fraction. More taken jobs is better. Its tolerance threshold is
+`ceil(expected taken / (1 + tolerance%))`, and its percentage difference divides
+the taken-count difference by the expected taken count (the first number).
 When a run creates `result.txt`, the Live progress header displays the overall
 `PASSED` or `FAILED` value read from that file. **Open result** then becomes
 available and opens the report directly in the read-only JSON files viewer.
@@ -113,5 +117,5 @@ python scripts/json_http_tester.py --base-url http://localhost:9000 \
   --calculation-time-tolerance-percent 0 \
   --total-distance-tolerance-percent 0 \
   --total-value-tolerance-percent 0 \
-  --unhandled-jobs-tolerance-percent 0
+  --jobs-tolerance-percent 0
 ```

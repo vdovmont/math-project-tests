@@ -64,10 +64,10 @@ TOLERANCE_FIELDS = (
         tester.TOTAL_VALUE_TOLERANCE_PERCENT,
     ),
     (
-        "unhandled_jobs_tolerance_percent",
-        "unhandled-jobs-tolerance-percent",
-        "Unhandled jobs",
-        tester.UNHANDLED_JOBS_TOLERANCE_PERCENT,
+        "jobs_tolerance_percent",
+        "jobs-tolerance-percent",
+        "Jobs",
+        tester.JOBS_TOLERANCE_PERCENT,
     ),
 )
 PROFILE_OPTION_NAMES = (

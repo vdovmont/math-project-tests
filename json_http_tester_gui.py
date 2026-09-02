@@ -70,8 +70,15 @@ PROFILE_OPTION_NAMES = (
     *(option_name for option_name, _, _, _ in TOLERANCE_FIELDS),
 )
 PREVIOUS_OPTIONS_FILE = Path.cwd() / ".json_http_tester_gui_previous.json"
+SAVED_PROFILES_FILE = Path.cwd() / ".json_http_tester_gui_profiles.json"
+MAX_PROFILE_NAME_LENGTH = 80
+MAX_SAVED_PROFILES = 100
 DELETE_PREVIEWS: dict[str, dict[str, object]] = {}
 DELETE_PREVIEW_LOCK = threading.Lock()
+
+
+class ProfileStorageError(Exception):
+    pass
 
 
 class RunState:
@@ -578,6 +585,116 @@ def save_previous_option_profile(options: dict[str, object]) -> None:
         except OSError:
             pass
         raise
+
+
+def validate_saved_profile_name(value: object) -> str:
+    if not isinstance(value, str):
+        raise ValueError("Profile name must be text.")
+    name = value.strip()
+    if not name:
+        raise ValueError("Profile name must not be empty.")
+    if len(name) > MAX_PROFILE_NAME_LENGTH:
+        raise ValueError(
+            f"Profile name must not exceed {MAX_PROFILE_NAME_LENGTH} characters."
+        )
+    if any(ord(character) < 32 for character in name):
+        raise ValueError("Profile name must not contain control characters.")
+    return name
+
+
+def load_saved_option_profiles() -> dict[str, dict[str, object]]:
+    try:
+        with SAVED_PROFILES_FILE.open("r", encoding="utf-8") as file:
+            saved_data = json.load(file)
+    except FileNotFoundError:
+        return {}
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ProfileStorageError(
+            f"Could not read saved profiles: {error}"
+        ) from error
+
+    try:
+        if not isinstance(saved_data, dict) or saved_data.get("version") != 1:
+            raise ValueError("saved profile file has an unsupported format")
+        raw_profiles = saved_data.get("profiles")
+        if not isinstance(raw_profiles, dict):
+            raise ValueError("saved profile file has no valid profiles object")
+        if len(raw_profiles) > MAX_SAVED_PROFILES:
+            raise ValueError("saved profile file contains too many profiles")
+
+        profiles: dict[str, dict[str, object]] = {}
+        normalized_names: set[str] = set()
+        for raw_name, raw_profile in raw_profiles.items():
+            name = validate_saved_profile_name(raw_name)
+            normalized_name = name.casefold()
+            if normalized_name in normalized_names:
+                raise ValueError(
+                    f"profile name '{name}' duplicates another saved name"
+                )
+            if not isinstance(raw_profile, dict):
+                raise ValueError(f"profile '{name}' has invalid options")
+            profiles[name] = option_profile(validate_options(raw_profile))
+            normalized_names.add(normalized_name)
+        return dict(sorted(profiles.items(), key=lambda item: item[0].casefold()))
+    except ValueError as error:
+        raise ProfileStorageError(f"Could not load saved profiles: {error}") from error
+
+
+def write_saved_option_profiles(
+    profiles: dict[str, dict[str, object]],
+) -> None:
+    temporary_file = SAVED_PROFILES_FILE.with_suffix(
+        SAVED_PROFILES_FILE.suffix + ".tmp"
+    )
+    payload = {
+        "version": 1,
+        "profiles": dict(
+            sorted(profiles.items(), key=lambda item: item[0].casefold())
+        ),
+    }
+    try:
+        with temporary_file.open("w", encoding="utf-8", newline="") as file:
+            json.dump(payload, file, indent=2, ensure_ascii=False)
+            file.write("\n")
+        temporary_file.replace(SAVED_PROFILES_FILE)
+    except OSError:
+        try:
+            temporary_file.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
+def save_named_option_profile(data: object) -> dict[str, object]:
+    if not isinstance(data, dict):
+        raise ValueError("Request body must be a JSON object.")
+    name = validate_saved_profile_name(data.get("name"))
+    raw_options = data.get("options")
+    profile = option_profile(validate_options(raw_options))
+    profiles = load_saved_option_profiles()
+    if any(existing.casefold() == name.casefold() for existing in profiles):
+        raise ValueError(f"A profile named '{name}' already exists.")
+    if len(profiles) >= MAX_SAVED_PROFILES:
+        raise ValueError(f"At most {MAX_SAVED_PROFILES} profiles can be saved.")
+    profiles[name] = profile
+    write_saved_option_profiles(profiles)
+    return {"name": name, "profile": profile, "profiles": profiles}
+
+
+def delete_named_option_profile(data: object) -> dict[str, object]:
+    if not isinstance(data, dict):
+        raise ValueError("Request body must be a JSON object.")
+    name = validate_saved_profile_name(data.get("name"))
+    profiles = load_saved_option_profiles()
+    matching_name = next(
+        (existing for existing in profiles if existing.casefold() == name.casefold()),
+        None,
+    )
+    if matching_name is None:
+        raise ValueError(f"Profile '{name}' does not exist.")
+    del profiles[matching_name]
+    write_saved_option_profiles(profiles)
+    return {"deleted": matching_name, "profiles": profiles}
 
 
 def get_file_root(root_name: str) -> tuple[str, Path]:
@@ -1168,10 +1285,19 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/config":
+            profiles_error = None
+            try:
+                profiles = load_saved_option_profiles()
+            except ProfileStorageError as error:
+                profiles = {}
+                profiles_error = str(error)
+                print(profiles_error, file=sys.stderr)
             self.send_json(
                 {
                     "default": default_option_profile(),
                     "previous": load_previous_option_profile(),
+                    "profiles": profiles,
+                    "profiles_error": profiles_error,
                 }
             )
             return
@@ -1246,6 +1372,8 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
             "/api/add-test-type",
             "/api/delete-preview",
             "/api/delete",
+            "/api/profile/save",
+            "/api/profile/delete",
         }:
             self.send_json({"error": "Not found."}, HTTPStatus.NOT_FOUND)
             return
@@ -1274,6 +1402,12 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
                 status = HTTPStatus.ACCEPTED
             elif request_path == "/api/stop":
                 result = RUN_STATE.stop()
+                status = HTTPStatus.OK
+            elif request_path == "/api/profile/save":
+                result = save_named_option_profile(data)
+                status = HTTPStatus.OK
+            elif request_path == "/api/profile/delete":
+                result = delete_named_option_profile(data)
                 status = HTTPStatus.OK
             else:
                 with RUN_STATE.lock:
@@ -1305,6 +1439,11 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
             return
         except RuntimeError as error:
             self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
+            return
+        except ProfileStorageError as error:
+            self.send_json(
+                {"error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR
+            )
             return
         except OSError as error:
             self.send_json(

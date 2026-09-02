@@ -103,7 +103,9 @@
     .options-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
     .options-heading h2 { margin: 0; }
     .profile-buttons { display: flex; gap: 6px; }
-    .profile-buttons .small-button { padding: 5px 8px; font-size: 12px; }
+    .profile-buttons button { padding: 5px 8px; font-size: 12px; }
+    .profile-manager { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; margin-bottom: 15px; }
+    .profile-manager select { margin: 0; padding: 6px 8px; font-size: 12px; }
 
     label {
       display: block;
@@ -393,6 +395,7 @@
       box-shadow: 0 25px 90px rgba(0, 0, 0, .6);
     }
     dialog::backdrop { background: rgba(3, 7, 18, .78); }
+    dialog.profile-dialog { width: min(480px, calc(100% - 32px)); }
     .dialog-body { padding: 22px; }
     .dialog-body h2 { margin-bottom: 8px; }
     .delete-list {
@@ -449,6 +452,15 @@
             <div class="profile-buttons">
               <button id="default-options" class="small-button" type="button" disabled>Default</button>
               <button id="previous-options" class="small-button" type="button" disabled>Previous</button>
+            </div>
+          </div>
+          <div class="profile-manager">
+            <select id="saved-profile" aria-label="Saved profile">
+              <option value=""></option>
+            </select>
+            <div class="profile-buttons">
+              <button id="save-profile" class="add-button" type="button">Save</button>
+              <button id="delete-profile" class="danger-button" type="button" disabled>Delete</button>
             </div>
           </div>
           <label>Base URL
@@ -532,6 +544,48 @@
     </section>
   </main>
 
+  <dialog id="save-profile-dialog" class="profile-dialog">
+    <form id="save-profile-form" class="dialog-body upload-form">
+      <h2>Save options profile</h2>
+      <p>Enter a name for the current run options.</p>
+      <label>Profile name
+        <input id="save-profile-name" type="text" maxlength="80" required autocomplete="off">
+      </label>
+      <p id="save-profile-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="save-profile-cancel" class="small-button" type="button">Cancel</button>
+        <button id="save-profile-confirm" class="add-button" type="submit">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="select-delete-profile-dialog" class="profile-dialog">
+    <form id="select-delete-profile-form" class="dialog-body upload-form">
+      <h2>Delete options profile</h2>
+      <p>Select the saved profile you want to delete.</p>
+      <label>Profile
+        <select id="delete-profile-select" required></select>
+      </label>
+      <p id="select-delete-profile-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="select-delete-profile-cancel" class="small-button" type="button">Cancel</button>
+        <button class="danger-button" type="submit">Continue</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-delete-profile-dialog" class="profile-dialog">
+    <div class="dialog-body">
+      <h2>Confirm profile deletion</h2>
+      <p>Are you sure you want to delete “<strong id="confirm-delete-profile-name"></strong>”?</p>
+      <p id="confirm-delete-profile-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="confirm-delete-profile-cancel" class="small-button" type="button">Cancel</button>
+        <button id="confirm-delete-profile" class="danger-button" type="button">Delete</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="upload-dialog">
     <form id="upload-form" class="dialog-body upload-form">
       <h2>Add test type</h2>
@@ -569,6 +623,25 @@
     const toleranceInputs = form.querySelectorAll('.tolerance-grid input');
     const defaultOptionsButton = document.querySelector('#default-options');
     const previousOptionsButton = document.querySelector('#previous-options');
+    const savedProfileSelect = document.querySelector('#saved-profile');
+    const saveProfileButton = document.querySelector('#save-profile');
+    const deleteProfileButton = document.querySelector('#delete-profile');
+    const saveProfileDialog = document.querySelector('#save-profile-dialog');
+    const saveProfileForm = document.querySelector('#save-profile-form');
+    const saveProfileName = document.querySelector('#save-profile-name');
+    const saveProfileError = document.querySelector('#save-profile-error');
+    const saveProfileCancel = document.querySelector('#save-profile-cancel');
+    const saveProfileConfirm = document.querySelector('#save-profile-confirm');
+    const selectDeleteProfileDialog = document.querySelector('#select-delete-profile-dialog');
+    const selectDeleteProfileForm = document.querySelector('#select-delete-profile-form');
+    const deleteProfileSelect = document.querySelector('#delete-profile-select');
+    const selectDeleteProfileError = document.querySelector('#select-delete-profile-error');
+    const selectDeleteProfileCancel = document.querySelector('#select-delete-profile-cancel');
+    const confirmDeleteProfileDialog = document.querySelector('#confirm-delete-profile-dialog');
+    const confirmDeleteProfileName = document.querySelector('#confirm-delete-profile-name');
+    const confirmDeleteProfileError = document.querySelector('#confirm-delete-profile-error');
+    const confirmDeleteProfileCancel = document.querySelector('#confirm-delete-profile-cancel');
+    const confirmDeleteProfileButton = document.querySelector('#confirm-delete-profile');
     const runButton = document.querySelector('#run-button');
     const statusBadge = document.querySelector('#status');
     const consoleView = document.querySelector('#console');
@@ -610,6 +683,8 @@
     let routeMap = null;
     let defaultOptions = null;
     let previousOptions = null;
+    let savedProfiles = {};
+    let pendingProfileDeletion = null;
     const visibleRouteLayers = new Map();
     const selectedTestTypes = new Set();
     const selectedResultFolders = new Set();
@@ -622,13 +697,38 @@
       ...Array.from(toleranceInputs, input => input.name),
     ];
 
-    function applyOptionProfile(profile) {
+    function applyOptionProfile(profile, savedProfileName = '') {
       if (!profile) return;
       for (const name of optionFieldNames) {
         const input = form.elements.namedItem(name);
         input.value = profile[name];
       }
+      if (savedProfileName) savedProfileSelect.value = savedProfileName;
+      else savedProfileSelect.selectedIndex = -1;
       updateProfileButtons();
+    }
+
+    function currentOptionValues() {
+      return Object.fromEntries(new FormData(form).entries());
+    }
+
+    function renderSavedProfiles(selectedName = '') {
+      const emptyOption = document.createElement('option');
+      emptyOption.value = '';
+      emptyOption.textContent = '';
+      savedProfileSelect.replaceChildren(emptyOption);
+
+      const names = Object.keys(savedProfiles).sort((left, right) =>
+        left.localeCompare(right, undefined, {sensitivity: 'base'}));
+      for (const name of names) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        savedProfileSelect.append(option);
+      }
+      if (names.includes(selectedName)) savedProfileSelect.value = selectedName;
+      else savedProfileSelect.selectedIndex = -1;
+      deleteProfileButton.disabled = names.length === 0;
     }
 
     function profileMatchesCurrentValues(profile) {
@@ -649,11 +749,133 @@
         : 'No previous test-run options have been saved yet.';
     }
 
-    form.addEventListener('input', updateProfileButtons);
+    function closeSaveProfileDialog() {
+      saveProfileDialog.close();
+      saveProfileForm.reset();
+      saveProfileError.textContent = '';
+    }
+
+    saveProfileButton.addEventListener('click', () => {
+      if (!form.reportValidity()) return;
+      saveProfileForm.reset();
+      saveProfileError.textContent = '';
+      saveProfileDialog.showModal();
+      window.requestAnimationFrame(() => saveProfileName.focus());
+    });
+    saveProfileCancel.addEventListener('click', closeSaveProfileDialog);
+    saveProfileDialog.addEventListener('cancel', () => {
+      saveProfileForm.reset();
+      saveProfileError.textContent = '';
+    });
+    saveProfileForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      saveProfileError.textContent = '';
+      saveProfileConfirm.disabled = true;
+      try {
+        const data = await fetchJson('/api/profile/save', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            name: saveProfileName.value,
+            options: currentOptionValues(),
+          }),
+        });
+        savedProfiles = data.profiles;
+        closeSaveProfileDialog();
+        renderSavedProfiles(data.name);
+        applyOptionProfile(data.profile, data.name);
+      } catch (error) {
+        saveProfileError.textContent = error.message;
+      } finally {
+        saveProfileConfirm.disabled = false;
+      }
+    });
+
+    function closeSelectDeleteProfileDialog() {
+      selectDeleteProfileDialog.close();
+      selectDeleteProfileError.textContent = '';
+    }
+
+    deleteProfileButton.addEventListener('click', () => {
+      const names = Object.keys(savedProfiles).sort((left, right) =>
+        left.localeCompare(right, undefined, {sensitivity: 'base'}));
+      if (!names.length) return;
+      deleteProfileSelect.replaceChildren();
+      for (const name of names) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        deleteProfileSelect.append(option);
+      }
+      const activeName = savedProfileSelect.value;
+      deleteProfileSelect.value = names.includes(activeName) ? activeName : names[0];
+      selectDeleteProfileError.textContent = '';
+      selectDeleteProfileDialog.showModal();
+    });
+    selectDeleteProfileCancel.addEventListener(
+      'click', closeSelectDeleteProfileDialog);
+    selectDeleteProfileDialog.addEventListener('cancel', () => {
+      selectDeleteProfileError.textContent = '';
+    });
+    selectDeleteProfileForm.addEventListener('submit', event => {
+      event.preventDefault();
+      pendingProfileDeletion = deleteProfileSelect.value;
+      if (!pendingProfileDeletion) {
+        selectDeleteProfileError.textContent = 'Select a profile to delete.';
+        return;
+      }
+      closeSelectDeleteProfileDialog();
+      confirmDeleteProfileName.textContent = pendingProfileDeletion;
+      confirmDeleteProfileError.textContent = '';
+      confirmDeleteProfileDialog.showModal();
+    });
+
+    function closeConfirmDeleteProfileDialog() {
+      confirmDeleteProfileDialog.close();
+      confirmDeleteProfileError.textContent = '';
+      pendingProfileDeletion = null;
+    }
+
+    confirmDeleteProfileCancel.addEventListener(
+      'click', closeConfirmDeleteProfileDialog);
+    confirmDeleteProfileDialog.addEventListener('cancel', () => {
+      confirmDeleteProfileError.textContent = '';
+      pendingProfileDeletion = null;
+    });
+    confirmDeleteProfileButton.addEventListener('click', async () => {
+      if (!pendingProfileDeletion) return;
+      confirmDeleteProfileError.textContent = '';
+      confirmDeleteProfileButton.disabled = true;
+      try {
+        const data = await fetchJson('/api/profile/delete', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name: pendingProfileDeletion}),
+        });
+        savedProfiles = data.profiles;
+        closeConfirmDeleteProfileDialog();
+        renderSavedProfiles();
+      } catch (error) {
+        confirmDeleteProfileError.textContent = error.message;
+      } finally {
+        confirmDeleteProfileButton.disabled = false;
+      }
+    });
+
+    form.addEventListener('input', event => {
+      if (event.target === savedProfileSelect) return;
+      savedProfileSelect.selectedIndex = -1;
+      updateProfileButtons();
+    });
     defaultOptionsButton.addEventListener('click', () =>
       applyOptionProfile(defaultOptions));
     previousOptionsButton.addEventListener('click', () =>
       applyOptionProfile(previousOptions));
+    savedProfileSelect.addEventListener('change', () => {
+      const name = savedProfileSelect.value;
+      if (name) applyOptionProfile(savedProfiles[name], name);
+      else applyOptionProfile(defaultOptions);
+    });
 
     function ensureMap() {
       if (routeMap) return true;
@@ -1144,7 +1366,10 @@
       if (!response.ok) throw new Error(config.error || 'Could not load run options.');
       defaultOptions = config.default;
       previousOptions = config.previous;
+      savedProfiles = config.profiles || {};
+      renderSavedProfiles();
       applyOptionProfile(previousOptions || defaultOptions);
+      if (config.profiles_error) errorView.textContent = config.profiles_error;
     }
 
     async function pollStatus() {

@@ -48,6 +48,14 @@ previous profile on its next start; if none exists, it loads the hard-coded
 defaults. The **Default** and **Previous** buttons switch profiles and are disabled
 when the form already matches that profile. Unsaved edits enable both available
 profile buttons.
+Named profiles are stored separately in `.json_http_tester_gui_profiles.json` in
+the launch directory. The profile dropdown always starts with a blank selection;
+actively choosing that blank entry loads the hard-coded defaults, while initial
+GUI startup still loads Previous when available. Choosing a saved name loads its
+options. **Save** opens a naming dialog for the
+current fields. **Delete** first asks which saved profile to remove and then shows
+a second confirmation containing that profile's name. Profile names are unique
+without regard to letter case.
 The comparison report shows the expected value, tolerance limit, raw difference,
 percentage difference from the expected value, and a status for every metric.
 Percentage differences normally use one decimal place and use three when their

@@ -554,39 +554,6 @@ def option_profile(options: dict[str, object]) -> dict[str, object]:
     return {name: options[name] for name in PROFILE_OPTION_NAMES}
 
 
-def load_previous_option_profile() -> dict[str, object] | None:
-    try:
-        with PREVIOUS_OPTIONS_FILE.open("r", encoding="utf-8") as file:
-            saved_data = json.load(file)
-        return option_profile(validate_options(saved_data))
-    except FileNotFoundError:
-        return None
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
-        print(
-            f"Could not load previous GUI options from "
-            f"'{tester.display_path(PREVIOUS_OPTIONS_FILE)}': {error}",
-            file=sys.stderr,
-        )
-        return None
-
-
-def save_previous_option_profile(options: dict[str, object]) -> None:
-    temporary_file = PREVIOUS_OPTIONS_FILE.with_suffix(
-        PREVIOUS_OPTIONS_FILE.suffix + ".tmp"
-    )
-    try:
-        with temporary_file.open("w", encoding="utf-8", newline="") as file:
-            json.dump(option_profile(options), file, indent=2, ensure_ascii=False)
-            file.write("\n")
-        temporary_file.replace(PREVIOUS_OPTIONS_FILE)
-    except OSError:
-        try:
-            temporary_file.unlink(missing_ok=True)
-        except OSError:
-            pass
-        raise
-
-
 def validate_saved_profile_name(value: object) -> str:
     if not isinstance(value, str):
         raise ValueError("Profile name must be text.")
@@ -602,12 +569,15 @@ def validate_saved_profile_name(value: object) -> str:
     return name
 
 
-def load_saved_option_profiles() -> dict[str, dict[str, object]]:
+def load_option_profile_store() -> tuple[
+    dict[str, object] | None,
+    dict[str, dict[str, object]],
+]:
     try:
         with SAVED_PROFILES_FILE.open("r", encoding="utf-8") as file:
             saved_data = json.load(file)
     except FileNotFoundError:
-        return {}
+        return None, {}
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ProfileStorageError(
             f"Could not read saved profiles: {error}"
@@ -616,6 +586,13 @@ def load_saved_option_profiles() -> dict[str, dict[str, object]]:
     try:
         if not isinstance(saved_data, dict) or saved_data.get("version") != 1:
             raise ValueError("saved profile file has an unsupported format")
+        raw_previous = saved_data.get("previous")
+        if raw_previous is None:
+            previous = None
+        elif isinstance(raw_previous, dict):
+            previous = option_profile(validate_options(raw_previous))
+        else:
+            raise ValueError("saved profile file has invalid previous options")
         raw_profiles = saved_data.get("profiles")
         if not isinstance(raw_profiles, dict):
             raise ValueError("saved profile file has no valid profiles object")
@@ -635,12 +612,15 @@ def load_saved_option_profiles() -> dict[str, dict[str, object]]:
                 raise ValueError(f"profile '{name}' has invalid options")
             profiles[name] = option_profile(validate_options(raw_profile))
             normalized_names.add(normalized_name)
-        return dict(sorted(profiles.items(), key=lambda item: item[0].casefold()))
+        return previous, dict(
+            sorted(profiles.items(), key=lambda item: item[0].casefold())
+        )
     except ValueError as error:
         raise ProfileStorageError(f"Could not load saved profiles: {error}") from error
 
 
-def write_saved_option_profiles(
+def write_option_profile_store(
+    previous: dict[str, object] | None,
     profiles: dict[str, dict[str, object]],
 ) -> None:
     temporary_file = SAVED_PROFILES_FILE.with_suffix(
@@ -648,6 +628,7 @@ def write_saved_option_profiles(
     )
     payload = {
         "version": 1,
+        "previous": previous,
         "profiles": dict(
             sorted(profiles.items(), key=lambda item: item[0].casefold())
         ),
@@ -665,19 +646,49 @@ def write_saved_option_profiles(
         raise
 
 
+def save_previous_option_profile(options: dict[str, object]) -> None:
+    _, profiles = load_option_profile_store()
+    write_option_profile_store(option_profile(options), profiles)
+
+
+# TODO: Remove this migration after 2026-09-09 (one week).
+def migrate_legacy_previous_options() -> bool:
+    try:
+        with PREVIOUS_OPTIONS_FILE.open("r", encoding="utf-8") as file:
+            legacy_data = json.load(file)
+    except FileNotFoundError:
+        return False
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ProfileStorageError(
+            f"Could not read legacy previous options: {error}"
+        ) from error
+
+    try:
+        legacy_previous = option_profile(validate_options(legacy_data))
+    except ValueError as error:
+        raise ProfileStorageError(
+            f"Could not migrate legacy previous options: {error}"
+        ) from error
+
+    _, profiles = load_option_profile_store()
+    write_option_profile_store(legacy_previous, profiles)
+    PREVIOUS_OPTIONS_FILE.unlink()
+    return True
+
+
 def save_named_option_profile(data: object) -> dict[str, object]:
     if not isinstance(data, dict):
         raise ValueError("Request body must be a JSON object.")
     name = validate_saved_profile_name(data.get("name"))
     raw_options = data.get("options")
     profile = option_profile(validate_options(raw_options))
-    profiles = load_saved_option_profiles()
+    previous, profiles = load_option_profile_store()
     if any(existing.casefold() == name.casefold() for existing in profiles):
         raise ValueError(f"A profile named '{name}' already exists.")
     if len(profiles) >= MAX_SAVED_PROFILES:
         raise ValueError(f"At most {MAX_SAVED_PROFILES} profiles can be saved.")
     profiles[name] = profile
-    write_saved_option_profiles(profiles)
+    write_option_profile_store(previous, profiles)
     return {"name": name, "profile": profile, "profiles": profiles}
 
 
@@ -685,7 +696,7 @@ def delete_named_option_profile(data: object) -> dict[str, object]:
     if not isinstance(data, dict):
         raise ValueError("Request body must be a JSON object.")
     name = validate_saved_profile_name(data.get("name"))
-    profiles = load_saved_option_profiles()
+    previous, profiles = load_option_profile_store()
     matching_name = next(
         (existing for existing in profiles if existing.casefold() == name.casefold()),
         None,
@@ -693,7 +704,7 @@ def delete_named_option_profile(data: object) -> dict[str, object]:
     if matching_name is None:
         raise ValueError(f"Profile '{name}' does not exist.")
     del profiles[matching_name]
-    write_saved_option_profiles(profiles)
+    write_option_profile_store(previous, profiles)
     return {"deleted": matching_name, "profiles": profiles}
 
 
@@ -1287,15 +1298,16 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/config":
             profiles_error = None
             try:
-                profiles = load_saved_option_profiles()
+                previous, profiles = load_option_profile_store()
             except ProfileStorageError as error:
+                previous = None
                 profiles = {}
                 profiles_error = str(error)
                 print(profiles_error, file=sys.stderr)
             self.send_json(
                 {
                     "default": default_option_profile(),
-                    "previous": load_previous_option_profile(),
+                    "previous": previous,
                     "profiles": profiles,
                     "profiles_error": profiles_error,
                 }
@@ -1491,6 +1503,15 @@ def main() -> int:
     except ValueError as error:
         print(f"Error: {error}", file=sys.stderr)
         return 2
+
+    try:
+        if migrate_legacy_previous_options():
+            print(
+                f"Migrated previous GUI options into "
+                f"'{tester.display_path(SAVED_PROFILES_FILE)}'."
+            )
+    except (OSError, ProfileStorageError) as error:
+        print(f"Could not migrate previous GUI options: {error}", file=sys.stderr)
 
     try:
         create_required_folders()

@@ -42,14 +42,17 @@ The Runner has separate allowed-error percentages for calculation time, total
 distance, total value, and unhandled jobs. Each defaults to zero. A metric passes
 when its test value is no greater than the expected value plus that percentage;
 for example, an expected value of 100 with a 10% allowance passes through 110.
-The Base URL and percentage fields are saved only when a test run starts, in
-`.json_http_tester_gui_previous.json` in the launch directory. The GUI loads that
-previous profile on its next start; if none exists, it loads the hard-coded
+The Base URL and percentage fields are saved only when a test run starts. Previous
+options and named profiles share `.json_http_tester_gui_profiles.json` in the
+launch directory. Previous is stored in a dedicated top-level field, separate
+from user profile names, so a named profile called `previous` is also allowed.
+The GUI loads Previous on its next start; if none exists, it loads the hard-coded
 defaults. The **Default** and **Previous** buttons switch profiles and are disabled
 when the form already matches that profile. Unsaved edits enable both available
-profile buttons.
-Named profiles are stored separately in `.json_http_tester_gui_profiles.json` in
-the launch directory. The profile dropdown always starts with a blank selection;
+profile buttons. A temporary startup migration merges the legacy
+`.json_http_tester_gui_previous.json` file and deletes it only after the combined
+profiles file is written successfully.
+The profile dropdown always starts with a blank selection;
 actively choosing that blank entry loads the hard-coded defaults, while initial
 GUI startup still loads Previous when available. Choosing a saved name loads its
 options. **Save** opens a naming dialog for the

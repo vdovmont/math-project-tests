@@ -20,7 +20,7 @@ from urllib.request import Request, urlopen
 # -----------------------------------------------------------------------------
 # Configuration: edit these values before running the script.
 # -----------------------------------------------------------------------------
-BASE_URL = "http://localhost:9000"
+BASE_URL = "http://127.0.0.1:9000"
 GETQUEUE_REQUEST = "/getqueue"
 START_REQUEST = "/start"
 STATE_REQUEST = "/state"

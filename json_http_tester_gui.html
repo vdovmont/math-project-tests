@@ -328,6 +328,7 @@
     .file-viewer { min-width: 0; background: #070c17; }
     .file-viewer-header {
       display: flex;
+      align-items: center;
       justify-content: space-between;
       gap: 15px;
       padding: 11px 16px;
@@ -335,6 +336,20 @@
       color: var(--muted);
       font-size: 12px;
     }
+    #file-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-viewer-meta { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+    .copy-file-button {
+      padding: 3px 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--field);
+      color: var(--text);
+      font: inherit;
+      cursor: pointer;
+    }
+    .copy-file-button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .copy-file-button:disabled { cursor: default; opacity: .65; }
+    .copy-file-button[hidden] { display: none; }
     #file-content {
       height: 475px;
       margin: 0;
@@ -558,7 +573,10 @@
           <div class="file-viewer">
             <div class="file-viewer-header">
               <span id="file-title">Select a file to view it</span>
-              <span id="file-size"></span>
+              <div class="file-viewer-meta">
+                <span id="file-size"></span>
+                <button id="copy-file" class="copy-file-button" type="button" hidden disabled>Copy</button>
+              </div>
             </div>
             <pre id="file-content">Read-only file contents appear here.</pre>
           </div>
@@ -708,6 +726,7 @@
     const fileTitle = document.querySelector('#file-title');
     const fileSize = document.querySelector('#file-size');
     const fileContent = document.querySelector('#file-content');
+    const copyFileButton = document.querySelector('#copy-file');
     const routeSelector = document.querySelector('#route-selector');
     const routesRefresh = document.querySelector('#routes-refresh');
     const tabButtons = document.querySelectorAll('.tab-button');
@@ -718,6 +737,8 @@
     let lastResultPath = null;
     let activeFileRoot = null;
     let activeFilePath = null;
+    let loadedFileContent = null;
+    let copyFeedbackTimeout = null;
     let deleteSelectionMode = null;
     let testRunRunning = false;
     let pendingDeleteToken = null;
@@ -1175,7 +1196,19 @@
       }
     }
 
+    function resetCopyButton() {
+      loadedFileContent = null;
+      copyFileButton.hidden = true;
+      copyFileButton.disabled = true;
+      copyFileButton.textContent = 'Copy';
+      if (copyFeedbackTimeout !== null) {
+        window.clearTimeout(copyFeedbackTimeout);
+        copyFeedbackTimeout = null;
+      }
+    }
+
     async function loadFile(root, path) {
+      resetCopyButton();
       const params = new URLSearchParams({root, path});
       try {
         const data = await fetchJson(`/api/file?${params}`);
@@ -1185,12 +1218,56 @@
         fileContent.textContent = data.content;
         fileContent.scrollTop = 0;
         fileContent.scrollLeft = 0;
+        const lowerPath = data.path.toLowerCase();
+        const isResultFile =
+          lowerPath === 'result.txt' || lowerPath.endsWith('/result.txt');
+        if (lowerPath.endsWith('.json') || isResultFile) {
+          loadedFileContent = data.content;
+          copyFileButton.hidden = false;
+          copyFileButton.disabled = false;
+        }
         selectFileInList(root, path);
       } catch (error) {
         fileTitle.textContent = path;
         fileSize.textContent = '';
         fileContent.classList.add('file-error');
         fileContent.textContent = error.message;
+      }
+    }
+
+    async function copyLoadedFile() {
+      if (loadedFileContent === null) return;
+      const contentToCopy = loadedFileContent;
+      copyFileButton.disabled = true;
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(contentToCopy);
+        } else {
+          const copyArea = document.createElement('textarea');
+          copyArea.value = contentToCopy;
+          copyArea.setAttribute('readonly', '');
+          copyArea.style.position = 'fixed';
+          copyArea.style.opacity = '0';
+          document.body.append(copyArea);
+          try {
+            copyArea.select();
+            if (!document.execCommand('copy')) {
+              throw new Error('The browser rejected the copy command.');
+            }
+          } finally {
+            copyArea.remove();
+          }
+        }
+        copyFileButton.textContent = 'Copied!';
+        copyFeedbackTimeout = window.setTimeout(() => {
+          copyFileButton.textContent = 'Copy';
+          copyFeedbackTimeout = null;
+        }, 1500);
+      } catch (error) {
+        copyFileButton.textContent = 'Copy failed';
+        window.alert(`Could not copy the file: ${error.message}`);
+      } finally {
+        copyFileButton.disabled = false;
       }
     }
 
@@ -1666,6 +1743,7 @@
         fileTitle.textContent = 'Select a file to view it';
         fileSize.textContent = '';
         fileContent.textContent = 'Read-only file contents appear here.';
+        resetCopyButton();
         activeFileRoot = null;
         activeFilePath = null;
         setDeleteSelectionMode(null);
@@ -1681,6 +1759,7 @@
 
     folderRefresh.addEventListener('click', loadJsonGroups);
     routesRefresh.addEventListener('click', loadRouteGroups);
+    copyFileButton.addEventListener('click', copyLoadedFile);
 
     function activateTab(pageId) {
       tabButtons.forEach(button =>

@@ -99,7 +99,9 @@ collapses all groups again.
 Each expected/test source has a parent checkbox that toggles all of its routes;
 the indented route checkboxes can still be changed individually. Its separate
 **Collapse/Expand** button hides or reveals that source's route list without
-changing any route selections or map layers.
+changing any route selections or map layers. Each test-group header also has a
+**Collapse all/Expand all** button that applies the same action to every source
+inside that group.
 Expected routes use a solid blue line; test routes use distinct dashed colors.
 Stops are numbered continuously across every route in an individual result file,
 so later routes continue from the preceding route's final stop number.

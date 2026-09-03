@@ -395,6 +395,14 @@
       font-weight: 800;
       overflow-wrap: anywhere;
     }
+    .route-group-summary-content {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: calc(100% - 18px);
+      vertical-align: middle;
+    }
+    .route-group-name { min-width: 0; flex: 1; }
     .route-group-error { padding: 0 12px 12px; color: var(--danger); }
     .route-source { padding: 9px 12px 11px; border-top: 1px solid var(--border); }
     .route-source-title {
@@ -432,6 +440,7 @@
     }
     .route-collapse-button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
     .route-collapse-button:disabled { cursor: default; opacity: .5; }
+    .route-group:not([open]) .route-collapse-all-button { display: none; }
     .route-swatch { width: 18px; height: 4px; border-radius: 4px; flex: 0 0 auto; }
     .route-choices { margin-left: 24px; }
     .route-choices[hidden] { display: none; }
@@ -1104,8 +1113,58 @@
         const details = document.createElement('details');
         details.className = 'route-group';
         const summary = document.createElement('summary');
-        summary.textContent = group.name;
+        const summaryContent = document.createElement('span');
+        summaryContent.className = 'route-group-summary-content';
+        const groupName = document.createElement('span');
+        groupName.className = 'route-group-name';
+        groupName.textContent = group.name;
+        const collapseAllButton = document.createElement('button');
+        collapseAllButton.type = 'button';
+        collapseAllButton.className = 'route-collapse-button route-collapse-all-button';
+        collapseAllButton.textContent = 'Collapse all';
+        collapseAllButton.disabled = true;
+        collapseAllButton.setAttribute('aria-expanded', 'true');
+        collapseAllButton.setAttribute(
+          'aria-label', `Collapse all route lists for ${group.name}`);
+        summaryContent.append(groupName, collapseAllButton);
+        summary.append(summaryContent);
         details.append(summary);
+
+        const sourceCollapseControls = [];
+
+        function setSourceCollapsed(control, collapsed) {
+          control.routeChoices.hidden = collapsed;
+          control.button.textContent = collapsed ? 'Expand' : 'Collapse';
+          control.button.setAttribute('aria-expanded', String(!collapsed));
+          control.button.setAttribute(
+            'aria-label',
+            `${collapsed ? 'Expand' : 'Collapse'} routes for ${control.source.label}`,
+          );
+        }
+
+        function syncCollapseAllButton() {
+          const collapsible = sourceCollapseControls.filter(
+            control => !control.button.disabled);
+          collapseAllButton.disabled = collapsible.length === 0;
+          const allCollapsed =
+            collapsible.length > 0 && collapsible.every(control => control.routeChoices.hidden);
+          collapseAllButton.textContent = allCollapsed ? 'Expand all' : 'Collapse all';
+          collapseAllButton.setAttribute('aria-expanded', String(!allCollapsed));
+          collapseAllButton.setAttribute(
+            'aria-label',
+            `${allCollapsed ? 'Expand' : 'Collapse'} all route lists for ${group.name}`,
+          );
+        }
+
+        collapseAllButton.addEventListener('click', event => {
+          event.preventDefault();
+          event.stopPropagation();
+          const collapsible = sourceCollapseControls.filter(
+            control => !control.button.disabled);
+          const collapsing = collapsible.some(control => !control.routeChoices.hidden);
+          for (const control of collapsible) setSourceCollapsed(control, collapsing);
+          syncCollapseAllButton();
+        });
 
         if (group.error) {
           const error = document.createElement('div');
@@ -1202,20 +1261,22 @@
             fitVisibleRoutes();
           });
           collapseButton.disabled = routeControls.length === 0;
+          const collapseControl = {
+            button: collapseButton,
+            routeChoices,
+            source,
+          };
+          sourceCollapseControls.push(collapseControl);
           collapseButton.addEventListener('click', () => {
             const collapsing = !routeChoices.hidden;
-            routeChoices.hidden = collapsing;
-            collapseButton.textContent = collapsing ? 'Expand' : 'Collapse';
-            collapseButton.setAttribute('aria-expanded', String(!collapsing));
-            collapseButton.setAttribute(
-              'aria-label',
-              `${collapsing ? 'Expand' : 'Collapse'} routes for ${source.label}`,
-            );
+            setSourceCollapsed(collapseControl, collapsing);
+            syncCollapseAllButton();
           });
           syncSourceToggle();
           sourceSection.append(routeChoices);
           details.append(sourceSection);
         }
+        syncCollapseAllButton();
         routeSelector.append(details);
       });
     }

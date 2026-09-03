@@ -406,11 +406,35 @@
       font-size: 12px;
       font-weight: 800;
       overflow-wrap: anywhere;
+    }
+    .route-source-selector {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      flex: 1;
+      gap: 8px;
+      margin: 0;
+      color: inherit;
+      font: inherit;
       cursor: pointer;
     }
+    .route-source-name { min-width: 0; }
     .route-source-title input { width: auto; margin: 0; }
+    .route-collapse-button {
+      flex: none;
+      padding: 3px 7px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--field);
+      color: var(--muted);
+      font: 700 11px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+    }
+    .route-collapse-button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .route-collapse-button:disabled { cursor: default; opacity: .5; }
     .route-swatch { width: 18px; height: 4px; border-radius: 4px; flex: 0 0 auto; }
     .route-choices { margin-left: 24px; }
+    .route-choices[hidden] { display: none; }
     .route-choice {
       display: flex;
       align-items: start;
@@ -1091,8 +1115,10 @@
         for (const source of group.sources) {
           const sourceSection = document.createElement('div');
           sourceSection.className = 'route-source';
-          const sourceTitle = document.createElement('label');
+          const sourceTitle = document.createElement('div');
           sourceTitle.className = 'route-source-title';
+          const sourceSelector = document.createElement('label');
+          sourceSelector.className = 'route-source-selector';
           const sourceToggle = document.createElement('input');
           sourceToggle.type = 'checkbox';
           const swatch = document.createElement('span');
@@ -1100,9 +1126,17 @@
           const color = sourceColor(source);
           swatch.style.background = color;
           const sourceText = document.createElement('span');
+          sourceText.className = 'route-source-name';
           sourceText.textContent = source.label;
           sourceText.title = source.file;
-          sourceTitle.append(sourceToggle, swatch, sourceText);
+          const collapseButton = document.createElement('button');
+          collapseButton.type = 'button';
+          collapseButton.className = 'route-collapse-button';
+          collapseButton.textContent = 'Collapse';
+          collapseButton.setAttribute('aria-expanded', 'true');
+          collapseButton.setAttribute('aria-label', `Collapse routes for ${source.label}`);
+          sourceSelector.append(sourceToggle, swatch, sourceText);
+          sourceTitle.append(sourceSelector, collapseButton);
           sourceSection.append(sourceTitle);
 
           if (source.error) {
@@ -1164,6 +1198,17 @@
             }
             sourceToggle.indeterminate = false;
             fitVisibleRoutes();
+          });
+          collapseButton.disabled = routeControls.length === 0;
+          collapseButton.addEventListener('click', () => {
+            const collapsing = !routeChoices.hidden;
+            routeChoices.hidden = collapsing;
+            collapseButton.textContent = collapsing ? 'Expand' : 'Collapse';
+            collapseButton.setAttribute('aria-expanded', String(!collapsing));
+            collapseButton.setAttribute(
+              'aria-label',
+              `${collapsing ? 'Expand' : 'Collapse'} routes for ${source.label}`,
+            );
           });
           syncSourceToggle();
           sourceSection.append(routeChoices);

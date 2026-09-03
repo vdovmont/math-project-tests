@@ -529,7 +529,7 @@ def create_comparison_report(
                 "expected",
                 "tolerance",
                 "difference",
-                "difference\n(%)",
+                "difference(%)",
                 "status",
             ),
             *rows,

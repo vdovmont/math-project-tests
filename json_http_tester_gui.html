@@ -469,6 +469,24 @@
     .dialog-actions { display: flex; justify-content: end; gap: 10px; }
     .upload-form label { margin-top: 16px; }
     .upload-help { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+    .upload-result-section { margin-top: 18px; }
+    .upload-result-section h3 { margin: 0 0 8px; font-size: 14px; }
+    .upload-result-section.added h3 { color: var(--accent); }
+    .upload-result-section.failed h3 { color: var(--danger); }
+    .upload-result-list {
+      max-height: 220px;
+      margin: 0;
+      padding: 10px 10px 10px 30px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #080d18;
+      color: #d8e2f1;
+      font: 12px/1.55 "Cascadia Code", Consolas, monospace;
+      overflow-wrap: anywhere;
+    }
+    .upload-result-list li + li { margin-top: 7px; }
+    .upload-result-actions { margin-top: 18px; }
 
     @media (max-width: 800px) {
       header { align-items: start; }
@@ -647,22 +665,35 @@
 
   <dialog id="upload-dialog">
     <form id="upload-form" class="dialog-body upload-form">
-      <h2>Add test type</h2>
-      <p>Select a matching input and expected-output JSON file.</p>
-      <label>Input JSON
-        <input id="upload-input" type="file" accept=".json,application/json" required>
+      <h2>Add test types</h2>
+      <p>Select all files you want to process. Valid input/output pairs will be recognized automatically.</p>
+      <label>Files
+        <input id="upload-files" type="file" multiple required>
       </label>
-      <p class="upload-help">Filename must end with -input.json.</p>
-      <label>Expected output JSON
-        <input id="upload-output" type="file" accept=".json,application/json" required>
-      </label>
-      <p class="upload-help">Filename must end with -output.json and use the same base name.</p>
+      <p class="upload-help">Each test type needs matching <code>-input.json</code> and <code>-output.json</code> files. Other files will be reported as failures.</p>
       <p id="upload-error" class="error" role="alert"></p>
       <div class="dialog-actions">
         <button id="upload-cancel" class="small-button" type="button">Cancel</button>
-        <button id="upload-confirm" class="add-button" type="submit">Add test type</button>
+        <button id="upload-confirm" class="add-button" type="submit">Add test types</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="upload-result-dialog">
+    <div class="dialog-body">
+      <h2>Add test types results</h2>
+      <section class="upload-result-section added">
+        <h3 id="upload-added-heading">Added</h3>
+        <ul id="upload-added-list" class="upload-result-list"></ul>
+      </section>
+      <section class="upload-result-section failed">
+        <h3 id="upload-failed-heading">Failed</h3>
+        <ul id="upload-failed-list" class="upload-result-list"></ul>
+      </section>
+      <div class="dialog-actions upload-result-actions">
+        <button id="upload-result-close" class="small-button" type="button">Close</button>
+      </div>
+    </div>
   </dialog>
 
   <dialog id="delete-dialog">
@@ -711,11 +742,16 @@
     const addTestTypeButton = document.querySelector('#add-test-type');
     const uploadDialog = document.querySelector('#upload-dialog');
     const uploadForm = document.querySelector('#upload-form');
-    const uploadInput = document.querySelector('#upload-input');
-    const uploadOutput = document.querySelector('#upload-output');
+    const uploadFiles = document.querySelector('#upload-files');
     const uploadError = document.querySelector('#upload-error');
     const uploadCancelButton = document.querySelector('#upload-cancel');
     const uploadConfirmButton = document.querySelector('#upload-confirm');
+    const uploadResultDialog = document.querySelector('#upload-result-dialog');
+    const uploadAddedHeading = document.querySelector('#upload-added-heading');
+    const uploadAddedList = document.querySelector('#upload-added-list');
+    const uploadFailedHeading = document.querySelector('#upload-failed-heading');
+    const uploadFailedList = document.querySelector('#upload-failed-list');
+    const uploadResultClose = document.querySelector('#upload-result-close');
     const deleteTestTypesButton = document.querySelector('#delete-test-types');
     const deleteTestResultsButton = document.querySelector('#delete-test-results');
     const deleteDialog = document.querySelector('#delete-dialog');
@@ -1656,6 +1692,42 @@
       uploadError.textContent = '';
     }
 
+    function showUploadResults(results) {
+      const added = results.added || [];
+      const failed = results.failed || [];
+      uploadAddedHeading.textContent = `Added (${added.length})`;
+      uploadFailedHeading.textContent = `Failed (${failed.length})`;
+      uploadAddedList.replaceChildren();
+      uploadFailedList.replaceChildren();
+
+      if (!added.length) {
+        const item = document.createElement('li');
+        item.textContent = 'No test types were added.';
+        uploadAddedList.append(item);
+      } else {
+        for (const result of added) {
+          const item = document.createElement('li');
+          item.textContent = `[${result.test_type}] ${result.files.join(', ')}`;
+          uploadAddedList.append(item);
+        }
+      }
+
+      if (!failed.length) {
+        const item = document.createElement('li');
+        item.textContent = 'No files failed.';
+        uploadFailedList.append(item);
+      } else {
+        for (const result of failed) {
+          const item = document.createElement('li');
+          const testType = result.test_type ? `[${result.test_type}] ` : '';
+          const files = result.files.length ? result.files.join(', ') : 'Unknown file';
+          item.textContent = `${testType}${files} — ${result.reason}`;
+          uploadFailedList.append(item);
+        }
+      }
+      uploadResultDialog.showModal();
+    }
+
     addTestTypeButton.addEventListener('click', () => {
       setDeleteSelectionMode(null);
       uploadForm.reset();
@@ -1667,48 +1739,56 @@
       uploadForm.reset();
       uploadError.textContent = '';
     });
+    uploadResultClose.addEventListener('click', () => uploadResultDialog.close());
     uploadForm.addEventListener('submit', async event => {
       event.preventDefault();
       uploadError.textContent = '';
-      const inputFile = uploadInput.files[0];
-      const outputFile = uploadOutput.files[0];
-      if (!inputFile || !outputFile) {
-        uploadError.textContent = 'Select both JSON files.';
-        return;
-      }
-      if (!inputFile.name.endsWith('-input.json')) {
-        uploadError.textContent = 'The input filename must end with -input.json.';
-        return;
-      }
-      if (!outputFile.name.endsWith('-output.json')) {
-        uploadError.textContent = 'The output filename must end with -output.json.';
-        return;
-      }
-      const inputBase = inputFile.name.slice(0, -'-input.json'.length);
-      const outputBase = outputFile.name.slice(0, -'-output.json'.length);
-      if (!inputBase || inputBase !== outputBase) {
-        uploadError.textContent =
-          'Input and output filenames must use the same name before their suffixes.';
+      const selectedFiles = Array.from(uploadFiles.files);
+      if (!selectedFiles.length) {
+        uploadError.textContent = 'Select at least one file.';
         return;
       }
 
       uploadConfirmButton.disabled = true;
       try {
-        const [inputContent, outputContent] = await Promise.all([
-          inputFile.text(),
-          outputFile.text(),
-        ]);
-        await fetchJson('/api/add-test-type', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            input: {name: inputFile.name, content: inputContent},
-            output: {name: outputFile.name, content: outputContent},
-          }),
-        });
+        const readResults = await Promise.all(selectedFiles.map(async file => {
+          try {
+            return {
+              upload: {name: file.name, content: await file.text()},
+              failure: null,
+            };
+          } catch (error) {
+            return {
+              upload: null,
+              failure: {
+                test_type: null,
+                files: [file.name],
+                reason: `Could not read the selected file: ${error.message}`,
+              },
+            };
+          }
+        }));
+        const readableFiles = readResults
+          .filter(result => result.upload !== null)
+          .map(result => result.upload);
+        const localFailures = readResults
+          .filter(result => result.failure !== null)
+          .map(result => result.failure);
+        let results = {added: [], failed: []};
+        if (readableFiles.length) {
+          results = await fetchJson('/api/add-test-type', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({files: readableFiles}),
+          });
+        }
+        results.failed = [...localFailures, ...(results.failed || [])];
         closeUploadDialog();
-        await loadJsonGroups();
-        await loadRouteGroups();
+        showUploadResults(results);
+        if (results.added.length) {
+          await loadJsonGroups();
+          await loadRouteGroups();
+        }
       } catch (error) {
         uploadError.textContent = error.message;
       } finally {

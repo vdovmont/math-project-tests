@@ -39,9 +39,12 @@ open **Results**, and select complete timestamped run folders. Click the active
 delete button again to review the selection. Both actions show an exact path
 preview and require confirmation; deletion is disabled while a test run is active.
 
-Use the green **Add test type** button to upload a matching `-input.json` and
-`-output.json` pair. Both files must contain valid JSON, use the same base name,
-and not already exist in `JSON_DATA_FOLDER`. Uploading is disabled during a run.
+Use the green **Add test type** button to select multiple files in one operation.
+The GUI automatically groups matching `-input.json` and `-output.json` files by
+their shared base name and adds every valid pair independently. A results dialog
+lists added test types and reports unsupported filenames, missing or duplicate
+pair members, invalid JSON, oversized files, and existing-file conflicts.
+Uploading is disabled during a run.
 
 The page has three tabs in this order: **Runner**, **JSON files**, and **Map**.
 The Runner has separate allowed-error percentages for calculation time, total

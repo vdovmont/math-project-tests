@@ -31,6 +31,7 @@ HTML_FILE = SCRIPT_FOLDER / "json_http_tester_gui.html"
 MAX_REQUEST_BODY_BYTES = 64 * 1024
 MAX_VIEW_FILE_BYTES = 20 * 1024 * 1024
 MAX_UPLOAD_FILE_BYTES = 20 * 1024 * 1024
+MAX_UPLOAD_FILES = 200
 MAX_UPLOAD_REQUEST_BODY_BYTES = (MAX_UPLOAD_FILE_BYTES * 4) + (1024 * 1024)
 DELETE_PREVIEW_TTL_SECONDS = 300
 EXPECTED_FINALIZATION_SECONDS = 10.0
@@ -546,14 +547,14 @@ def validate_uploaded_json_file(
     return name, content, name.removesuffix(required_suffix)
 
 
-def add_test_type(data: object) -> dict[str, object]:
-    if not isinstance(data, dict):
-        raise ValueError("Request body must be a JSON object.")
+def add_test_type_pair(
+    input_item: object, output_item: object
+) -> dict[str, object]:
     input_name, input_content, input_base = validate_uploaded_json_file(
-        data.get("input"), "input", "-input.json"
+        input_item, "input", "-input.json"
     )
     output_name, output_content, output_base = validate_uploaded_json_file(
-        data.get("output"), "output", "-output.json"
+        output_item, "expected-output", "-output.json"
     )
     if not input_base or input_base != output_base:
         raise ValueError(
@@ -586,8 +587,123 @@ def add_test_type(data: object) -> dict[str, object]:
 
     return {
         "test_type": input_base,
-        "files": [tester.display_path(target) for target, _ in uploads],
+        "files": [target.name for target, _ in uploads],
     }
+
+
+def add_test_types(data: object) -> dict[str, object]:
+    if not isinstance(data, dict):
+        raise ValueError("Request body must be a JSON object.")
+    files = data.get("files")
+    if not isinstance(files, list) or not files:
+        raise ValueError("Select at least one file.")
+    if len(files) > MAX_UPLOAD_FILES:
+        raise ValueError(f"Select no more than {MAX_UPLOAD_FILES} files at once.")
+
+    grouped: dict[str, dict[str, list[object]]] = {}
+    failed: list[dict[str, object]] = []
+    for index, item in enumerate(files, start=1):
+        if not isinstance(item, dict):
+            failed.append(
+                {
+                    "test_type": None,
+                    "files": [f"Selection #{index}"],
+                    "reason": "The selected file data is invalid.",
+                }
+            )
+            continue
+        name = item.get("name")
+        if not isinstance(name, str) or not name:
+            failed.append(
+                {
+                    "test_type": None,
+                    "files": [f"Selection #{index}"],
+                    "reason": "The selected filename is missing.",
+                }
+            )
+            continue
+        if Path(name).name != name or "/" in name or "\\" in name:
+            failed.append(
+                {
+                    "test_type": None,
+                    "files": [name],
+                    "reason": "The filename is invalid.",
+                }
+            )
+            continue
+
+        if name.endswith("-input.json"):
+            suffix = "-input.json"
+            role = "input"
+        elif name.endswith("-output.json"):
+            suffix = "-output.json"
+            role = "output"
+        else:
+            failed.append(
+                {
+                    "test_type": None,
+                    "files": [name],
+                    "reason": (
+                        "Filename must end with '-input.json' or '-output.json'."
+                    ),
+                }
+            )
+            continue
+
+        base_name = name.removesuffix(suffix)
+        if not base_name:
+            failed.append(
+                {
+                    "test_type": None,
+                    "files": [name],
+                    "reason": "The test-type name before the suffix is empty.",
+                }
+            )
+            continue
+        group = grouped.setdefault(base_name, {"input": [], "output": []})
+        group[role].append(item)
+
+    added: list[dict[str, object]] = []
+    for base_name in sorted(grouped, key=str.casefold):
+        group = grouped[base_name]
+        input_items = group["input"]
+        output_items = group["output"]
+        selected_names = [
+            str(item.get("name", ""))
+            for item in [*input_items, *output_items]
+            if isinstance(item, dict)
+        ]
+        pairing_errors = []
+        if not input_items:
+            pairing_errors.append("missing matching '-input.json' file")
+        elif len(input_items) > 1:
+            pairing_errors.append("multiple '-input.json' files selected")
+        if not output_items:
+            pairing_errors.append("missing matching '-output.json' file")
+        elif len(output_items) > 1:
+            pairing_errors.append("multiple '-output.json' files selected")
+        if pairing_errors:
+            failed.append(
+                {
+                    "test_type": base_name,
+                    "files": selected_names,
+                    "reason": "; ".join(pairing_errors).capitalize() + ".",
+                }
+            )
+            continue
+
+        try:
+            added.append(add_test_type_pair(input_items[0], output_items[0]))
+        except (OSError, ValueError) as error:
+            failed.append(
+                {
+                    "test_type": base_name,
+                    "files": selected_names,
+                    "reason": str(error),
+                }
+            )
+
+    return {"added": added, "failed": failed}
 
 
 def validate_options(data: object) -> dict[str, object]:
@@ -1628,7 +1744,7 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
                 if request_path == "/api/test-type-enabled":
                     result = set_test_type_enabled(data)
                 elif request_path == "/api/add-test-type":
-                    result = add_test_type(data)
+                    result = add_test_types(data)
                 elif request_path == "/api/delete-preview":
                     result = make_deletion_preview(
                         str(data.get("mode", "")), data.get("items")

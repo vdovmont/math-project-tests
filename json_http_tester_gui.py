@@ -75,7 +75,6 @@ PROFILE_OPTION_NAMES = (
     "base_url",
     *(option_name for option_name, _, _, _ in TOLERANCE_FIELDS),
 )
-PREVIOUS_OPTIONS_FILE = Path.cwd() / ".json_http_tester_gui_previous.json"
 SAVED_PROFILES_FILE = Path.cwd() / ".json_http_tester_gui_profiles.json"
 TEST_SELECTION_FILE = Path.cwd() / ".json_http_tester_gui_test_selection.json"
 MAX_PROFILE_NAME_LENGTH = 80
@@ -888,31 +887,6 @@ def save_previous_option_profile(options: dict[str, object]) -> str | None:
         )
     write_option_profile_store(previous, previous_profile, profiles)
     return previous_profile
-
-
-# TODO: Remove this migration after 2026-09-09 (one week).
-def migrate_legacy_previous_options() -> bool:
-    try:
-        with PREVIOUS_OPTIONS_FILE.open("r", encoding="utf-8") as file:
-            legacy_data = json.load(file)
-    except FileNotFoundError:
-        return False
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise ProfileStorageError(
-            f"Could not read legacy previous options: {error}"
-        ) from error
-
-    try:
-        legacy_previous = option_profile(validate_options(legacy_data))
-    except ValueError as error:
-        raise ProfileStorageError(
-            f"Could not migrate legacy previous options: {error}"
-        ) from error
-
-    _, _, profiles = load_option_profile_store()
-    write_option_profile_store(legacy_previous, None, profiles)
-    PREVIOUS_OPTIONS_FILE.unlink()
-    return True
 
 
 def save_named_option_profile(data: object) -> dict[str, object]:
@@ -1863,15 +1837,6 @@ def main() -> int:
     except ValueError as error:
         print(f"Error: {error}", file=sys.stderr)
         return 2
-
-    try:
-        if migrate_legacy_previous_options():
-            print(
-                f"Migrated previous GUI options into "
-                f"'{tester.display_path(SAVED_PROFILES_FILE)}'."
-            )
-    except (OSError, ProfileStorageError) as error:
-        print(f"Could not migrate previous GUI options: {error}", file=sys.stderr)
 
     try:
         create_required_folders()

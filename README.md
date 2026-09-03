@@ -61,9 +61,7 @@ when the form already matches that profile. Unsaved edits enable both available
 profile buttons. When a run starts from a named profile, Previous also remembers
 that profile's identity and restores its dropdown selection along with the values.
 If the named profile is deleted, Previous retains the values without a named
-selection. A temporary startup migration merges the legacy
-`.json_http_tester_gui_previous.json` file and deletes it only after the combined
-profiles file is written successfully.
+selection.
 The profile dropdown always starts with a blank selection;
 actively choosing that blank entry loads the hard-coded defaults, while initial
 GUI startup still loads Previous when available. Choosing a saved name loads its

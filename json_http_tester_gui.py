@@ -121,7 +121,7 @@ class RunState:
         self.worker_finished = threading.Event()
         self.run_id = 0
 
-    def start(self, options: dict[str, object]) -> None:
+    def start(self, options: dict[str, object]) -> str | None:
         with self.lock:
             if self.running:
                 raise RuntimeError("A test run is already in progress.")
@@ -133,7 +133,7 @@ class RunState:
                 sum(self.expected_test_times.values())
                 + EXPECTED_FINALIZATION_SECONDS
             )
-            save_previous_option_profile(options)
+            previous_profile = save_previous_option_profile(options)
             self.running = True
             self.logs = []
             self.exit_code = None
@@ -164,6 +164,7 @@ class RunState:
             daemon=True,
         )
         worker.start()
+        return previous_profile
 
     def _append_log(self, line: str) -> None:
         with self.lock:
@@ -777,13 +778,14 @@ def validate_saved_profile_name(value: object) -> str:
 
 def load_option_profile_store() -> tuple[
     dict[str, object] | None,
+    str | None,
     dict[str, dict[str, object]],
 ]:
     try:
         with SAVED_PROFILES_FILE.open("r", encoding="utf-8") as file:
             saved_data = json.load(file)
     except FileNotFoundError:
-        return None, {}
+        return None, None, {}
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ProfileStorageError(
             f"Could not read saved profiles: {error}"
@@ -818,15 +820,31 @@ def load_option_profile_store() -> tuple[
                 raise ValueError(f"profile '{name}' has invalid options")
             profiles[name] = option_profile(validate_options(raw_profile))
             normalized_names.add(normalized_name)
-        return previous, dict(
+        profiles = dict(
             sorted(profiles.items(), key=lambda item: item[0].casefold())
         )
+        raw_previous_profile = saved_data.get("previous_profile")
+        previous_profile = None
+        if isinstance(raw_previous_profile, str) and previous is not None:
+            previous_profile = next(
+                (
+                    name
+                    for name in profiles
+                    if name.casefold() == raw_previous_profile.casefold()
+                    and profiles[name] == previous
+                ),
+                None,
+            )
+        elif raw_previous_profile is not None:
+            raise ValueError("saved profile file has an invalid previous profile")
+        return previous, previous_profile, profiles
     except ValueError as error:
         raise ProfileStorageError(f"Could not load saved profiles: {error}") from error
 
 
 def write_option_profile_store(
     previous: dict[str, object] | None,
+    previous_profile: str | None,
     profiles: dict[str, dict[str, object]],
 ) -> None:
     temporary_file = SAVED_PROFILES_FILE.with_suffix(
@@ -835,6 +853,7 @@ def write_option_profile_store(
     payload = {
         "version": 1,
         "previous": previous,
+        "previous_profile": previous_profile,
         "profiles": dict(
             sorted(profiles.items(), key=lambda item: item[0].casefold())
         ),
@@ -852,9 +871,23 @@ def write_option_profile_store(
         raise
 
 
-def save_previous_option_profile(options: dict[str, object]) -> None:
-    _, profiles = load_option_profile_store()
-    write_option_profile_store(option_profile(options), profiles)
+def save_previous_option_profile(options: dict[str, object]) -> str | None:
+    _, _, profiles = load_option_profile_store()
+    previous = option_profile(options)
+    requested_profile = options.get("profile_name")
+    previous_profile = None
+    if isinstance(requested_profile, str):
+        previous_profile = next(
+            (
+                name
+                for name in profiles
+                if name.casefold() == requested_profile.casefold()
+                and profiles[name] == previous
+            ),
+            None,
+        )
+    write_option_profile_store(previous, previous_profile, profiles)
+    return previous_profile
 
 
 # TODO: Remove this migration after 2026-09-09 (one week).
@@ -876,8 +909,8 @@ def migrate_legacy_previous_options() -> bool:
             f"Could not migrate legacy previous options: {error}"
         ) from error
 
-    _, profiles = load_option_profile_store()
-    write_option_profile_store(legacy_previous, profiles)
+    _, _, profiles = load_option_profile_store()
+    write_option_profile_store(legacy_previous, None, profiles)
     PREVIOUS_OPTIONS_FILE.unlink()
     return True
 
@@ -888,13 +921,13 @@ def save_named_option_profile(data: object) -> dict[str, object]:
     name = validate_saved_profile_name(data.get("name"))
     raw_options = data.get("options")
     profile = option_profile(validate_options(raw_options))
-    previous, profiles = load_option_profile_store()
+    previous, previous_profile, profiles = load_option_profile_store()
     if any(existing.casefold() == name.casefold() for existing in profiles):
         raise ValueError(f"A profile named '{name}' already exists.")
     if len(profiles) >= MAX_SAVED_PROFILES:
         raise ValueError(f"At most {MAX_SAVED_PROFILES} profiles can be saved.")
     profiles[name] = profile
-    write_option_profile_store(previous, profiles)
+    write_option_profile_store(previous, previous_profile, profiles)
     return {"name": name, "profile": profile, "profiles": profiles}
 
 
@@ -902,7 +935,7 @@ def delete_named_option_profile(data: object) -> dict[str, object]:
     if not isinstance(data, dict):
         raise ValueError("Request body must be a JSON object.")
     name = validate_saved_profile_name(data.get("name"))
-    previous, profiles = load_option_profile_store()
+    previous, previous_profile, profiles = load_option_profile_store()
     matching_name = next(
         (existing for existing in profiles if existing.casefold() == name.casefold()),
         None,
@@ -910,8 +943,14 @@ def delete_named_option_profile(data: object) -> dict[str, object]:
     if matching_name is None:
         raise ValueError(f"Profile '{name}' does not exist.")
     del profiles[matching_name]
-    write_option_profile_store(previous, profiles)
-    return {"deleted": matching_name, "profiles": profiles}
+    if previous_profile == matching_name:
+        previous_profile = None
+    write_option_profile_store(previous, previous_profile, profiles)
+    return {
+        "deleted": matching_name,
+        "previous_profile": previous_profile,
+        "profiles": profiles,
+    }
 
 
 def get_file_root(root_name: str) -> tuple[str, Path]:
@@ -1604,9 +1643,10 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/config":
             profiles_error = None
             try:
-                previous, profiles = load_option_profile_store()
+                previous, previous_profile, profiles = load_option_profile_store()
             except ProfileStorageError as error:
                 previous = None
+                previous_profile = None
                 profiles = {}
                 profiles_error = str(error)
                 print(profiles_error, file=sys.stderr)
@@ -1614,6 +1654,7 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
                 {
                     "default": default_option_profile(),
                     "previous": previous,
+                    "previous_profile": previous_profile,
                     "profiles": profiles,
                     "profiles_error": profiles_error,
                 }
@@ -1720,9 +1761,14 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(content_length).decode("utf-8"))
             if request_path == "/api/start":
                 options = validate_options(data)
-                RUN_STATE.start(options)
+                if isinstance(data, dict) and data.get("profile_name") is not None:
+                    options["profile_name"] = validate_saved_profile_name(
+                        data.get("profile_name")
+                    )
+                previous_profile = RUN_STATE.start(options)
                 result = RUN_STATE.snapshot(0)
                 result["previous_options"] = option_profile(options)
+                result["previous_profile"] = previous_profile
                 status = HTTPStatus.ACCEPTED
             elif request_path == "/api/stop":
                 result = RUN_STATE.stop()

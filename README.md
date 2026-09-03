@@ -58,7 +58,10 @@ from user profile names, so a named profile called `previous` is also allowed.
 The GUI loads Previous on its next start; if none exists, it loads the hard-coded
 defaults. The **Default** and **Previous** buttons switch profiles and are disabled
 when the form already matches that profile. Unsaved edits enable both available
-profile buttons. A temporary startup migration merges the legacy
+profile buttons. When a run starts from a named profile, Previous also remembers
+that profile's identity and restores its dropdown selection along with the values.
+If the named profile is deleted, Previous retains the values without a named
+selection. A temporary startup migration merges the legacy
 `.json_http_tester_gui_previous.json` file and deletes it only after the combined
 profiles file is written successfully.
 The profile dropdown always starts with a blank selection;

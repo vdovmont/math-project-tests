@@ -805,6 +805,7 @@
     let routeMap = null;
     let defaultOptions = null;
     let previousOptions = null;
+    let previousProfileName = null;
     let savedProfiles = {};
     let pendingProfileDeletion = null;
     const visibleRouteLayers = new Map();
@@ -975,6 +976,7 @@
           body: JSON.stringify({name: pendingProfileDeletion}),
         });
         savedProfiles = data.profiles;
+        previousProfileName = data.previous_profile;
         closeConfirmDeleteProfileDialog();
         renderSavedProfiles();
       } catch (error) {
@@ -992,7 +994,7 @@
     defaultOptionsButton.addEventListener('click', () =>
       applyOptionProfile(defaultOptions));
     previousOptionsButton.addEventListener('click', () =>
-      applyOptionProfile(previousOptions));
+      applyOptionProfile(previousOptions, previousProfileName || ''));
     savedProfileSelect.addEventListener('change', () => {
       const name = savedProfileSelect.value;
       if (name) applyOptionProfile(savedProfiles[name], name);
@@ -1620,9 +1622,13 @@
       if (!response.ok) throw new Error(config.error || 'Could not load run options.');
       defaultOptions = config.default;
       previousOptions = config.previous;
+      previousProfileName = config.previous_profile;
       savedProfiles = config.profiles || {};
       renderSavedProfiles();
-      applyOptionProfile(previousOptions || defaultOptions);
+      applyOptionProfile(
+        previousOptions || defaultOptions,
+        previousOptions ? previousProfileName || '' : '',
+      );
       if (config.profiles_error) errorView.textContent = config.profiles_error;
     }
 
@@ -1690,6 +1696,9 @@
       }
 
       const payload = Object.fromEntries(new FormData(form).entries());
+      if (savedProfileSelect.value) {
+        payload.profile_name = savedProfileSelect.value;
+      }
 
       try {
         const response = await fetch('/api/start', {
@@ -1700,6 +1709,7 @@
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Could not start test run.');
         previousOptions = data.previous_options;
+        previousProfileName = data.previous_profile;
         updateProfileButtons();
         runId = data.run_id;
         logIndex = 0;

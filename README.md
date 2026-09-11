@@ -118,7 +118,8 @@ Its console is separate from Tester output. Processing is not implemented yet,
 so Start and Previous remain disabled. Add files, Remove files, and Refresh are
 also disabled for now; future uploads will accept only `*-input.json` files.
 The Runner has separate allowed-error percentages for calculation time, total
-distance, total value, and jobs. Each defaults to zero. Most metrics pass
+distance, total value, total time, and jobs. Total time is the sum of every
+`totalDuration` value in an output JSON. Each tolerance defaults to zero. Most metrics pass
 when its test value is no greater than the expected value plus that percentage;
 for example, an expected value of 100 with a 10% allowance passes through 110.
 The Base URL and percentage fields are saved only when a test run starts. Previous

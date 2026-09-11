@@ -73,6 +73,12 @@ TOLERANCE_FIELDS = (
         tester.TOTAL_VALUE_TOLERANCE_PERCENT,
     ),
     (
+        "total_duration_tolerance_percent",
+        "total-duration-tolerance-percent",
+        "Total time",
+        tester.TOTAL_DURATION_TOLERANCE_PERCENT,
+    ),
+    (
         "jobs_tolerance_percent",
         "jobs-tolerance-percent",
         "Jobs",
@@ -795,9 +801,9 @@ def validate_profile_values(data: object) -> dict[str, object]:
         raise ValueError("Base URL must be a valid HTTP or HTTPS URL.")
 
     tolerances: dict[str, float] = {}
-    for option_name, _, label, _ in TOLERANCE_FIELDS:
+    for option_name, _, label, default in TOLERANCE_FIELDS:
         try:
-            value = float(data.get(option_name, ""))
+            value = float(data.get(option_name, default))
         except (TypeError, ValueError) as error:
             raise ValueError(f"{label} tolerance must be a number.") from error
         if not math.isfinite(value) or value < 0:
@@ -1188,9 +1194,9 @@ def tolerance_values(data: object) -> dict[str, float]:
     if not isinstance(data, dict):
         raise ValueError("Allowed-error values must be a JSON object.")
     values: dict[str, float] = {}
-    for option_name, _, label, _ in TOLERANCE_FIELDS:
+    for option_name, _, label, default in TOLERANCE_FIELDS:
         try:
-            value = float(data.get(option_name, ""))
+            value = float(data.get(option_name, default))
         except (TypeError, ValueError) as error:
             raise ValueError(f"{label} tolerance must be a number.") from error
         if not math.isfinite(value) or value < 0:

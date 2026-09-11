@@ -30,6 +30,7 @@ from config import (
     CALCULATION_TIME_TOLERANCE_PERCENT,
     TOTAL_DISTANCE_TOLERANCE_PERCENT,
     TOTAL_VALUE_TOLERANCE_PERCENT,
+    TOTAL_DURATION_TOLERANCE_PERCENT,
     JOBS_TOLERANCE_PERCENT,
     PASS_MARK,
     MAX_REFERENCE_FOLDER_NAME_LENGTH,
@@ -40,6 +41,7 @@ TOLERANCE_PERCENT_DEFAULTS = {
     "calculation_time": CALCULATION_TIME_TOLERANCE_PERCENT,
     "totalDistance": TOTAL_DISTANCE_TOLERANCE_PERCENT,
     "totalValue": TOTAL_VALUE_TOLERANCE_PERCENT,
+    "totalDuration": TOTAL_DURATION_TOLERANCE_PERCENT,
     "jobs": JOBS_TOLERANCE_PERCENT,
 }
 
@@ -88,6 +90,11 @@ def parse_arguments(arguments: list[str] | None = None) -> argparse.Namespace:
         "--total-value-tolerance-percent",
         type=float,
         default=TOTAL_VALUE_TOLERANCE_PERCENT,
+    )
+    parser.add_argument(
+        "--total-duration-tolerance-percent",
+        type=float,
+        default=TOTAL_DURATION_TOLERANCE_PERCENT,
     )
     parser.add_argument(
         "--jobs-tolerance-percent",
@@ -374,6 +381,34 @@ def find_result_object(data: object) -> dict[str, object]:
     )
 
 
+def sum_numeric_entries(data: object, key: str) -> int | float:
+    """Sum every numeric value stored under key anywhere in a JSON value."""
+    total: int | float = 0
+    found = False
+
+    def visit(value: object) -> None:
+        nonlocal total, found
+        if isinstance(value, dict):
+            for child_key, child in value.items():
+                if child_key == key:
+                    if not isinstance(child, (int, float)) or isinstance(child, bool):
+                        raise ValueError(f"field '{key}' must be numeric")
+                    if not math.isfinite(child):
+                        raise ValueError(f"field '{key}' must be finite")
+                    total += child
+                    found = True
+                else:
+                    visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+
+    visit(data)
+    if not found:
+        raise ValueError(f"could not find any '{key}' values")
+    return total
+
+
 def extract_result_metrics(
     data: object,
 ) -> dict[str, int | float | tuple[int, int]]:
@@ -399,6 +434,7 @@ def extract_result_metrics(
         "calculation_time": float(calculation_time_match.group(1)),
         "totalDistance": require_number(result, "totalDistance"),
         "totalValue": require_number(result, "totalValue"),
+        "totalDuration": sum_numeric_entries(data, "totalDuration"),
         "jobs": (jobs_taken, jobs_total),
     }
 
@@ -633,6 +669,7 @@ def create_comparison_report(
         for key, label in (
             ("totalDistance", "Total distance"),
             ("totalValue", "Total value"),
+            ("totalDuration", "Total time"),
         ):
             test_value = test_metrics[key]
             expected_value = expected_metrics[key]
@@ -763,6 +800,7 @@ def run(arguments: list[str] | None = None) -> int:
         "calculation_time": args.calculation_time_tolerance_percent,
         "totalDistance": args.total_distance_tolerance_percent,
         "totalValue": args.total_value_tolerance_percent,
+        "totalDuration": args.total_duration_tolerance_percent,
         "jobs": args.jobs_tolerance_percent,
     }
     if any(

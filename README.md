@@ -52,6 +52,10 @@ to blank whenever the URL is edited or changed by an options profile. A saved
 name appears after selecting it directly from the URL list or immediately after
 saving the current URL under that name. Selecting the blank entry restores the
 default Tester Base URL.
+Tester Profiles also remember the selected saved URL, Reference profile, and
+Allowed error preset. Previous stores the same selections when a run starts, so
+they are restored on the next application launch. If a referenced item was
+deleted, its selector falls back to blank or, for references, Initial.
 
 The **Reference profile** selector controls which expected outputs a test uses.
 **Initial** is always present, appears last, and cannot be deleted. **New** opens
@@ -115,6 +119,9 @@ The Base URL and percentage fields are saved only when a test run starts. Previo
 options and named profiles share `.json_http_tester_gui_profiles.json` in the
 `Settings` directory. Previous is stored in a dedicated top-level field, separate
 from user profile names, so a named profile called `previous` is also allowed.
+Allowed error values can also be saved independently with the selector below the
+percentage fields. These presets are stored in
+`Settings/.json_http_tester_gui_allowed_error_profiles.json`.
 The GUI loads Previous on its next start; if none exists, it loads the hard-coded
 defaults. The **Default** and **Previous** buttons switch profiles and are disabled
 when the form already matches that profile. Unsaved edits enable both available

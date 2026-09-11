@@ -587,7 +587,8 @@
               <button id="delete-profile" class="danger-button" type="button" disabled>Delete</button>
             </div>
           </div>
-          <label>Base URL
+          <p class="tolerance-title">Base URL</p>
+          <label aria-label="Base URL">
             <input id="base-url" name="base_url" type="url" required>
           </label>
           <div class="profile-manager">
@@ -600,6 +601,15 @@
             </div>
           </div>
           <p class="tolerance-title">Allowed error (%)</p>
+          <div class="profile-manager">
+            <select id="allowed-error-profile" name="allowed_error_profile" aria-label="Saved allowed error settings">
+              <option value=""></option>
+            </select>
+            <div class="profile-buttons">
+              <button id="save-allowed-error" class="add-button" type="button">Save</button>
+              <button id="delete-allowed-error" class="danger-button" type="button" disabled>Delete</button>
+            </div>
+          </div>
           <p class="tolerance-help">Most test values may exceed expected values; Jobs may fall below its expected taken count by this percentage.</p>
           <div class="tolerance-grid">
             <label>Calculation time
@@ -832,6 +842,21 @@
     </form>
   </dialog>
 
+  <dialog id="save-allowed-error-dialog" class="profile-dialog">
+    <form id="save-allowed-error-form" class="dialog-body upload-form">
+      <h2>Save Allowed error profile</h2>
+      <p>Enter a name for the current Allowed error settings.</p>
+      <label>Profile name
+        <input id="save-allowed-error-name" type="text" maxlength="80" required autocomplete="off">
+      </label>
+      <p id="save-allowed-error-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="save-allowed-error-cancel" class="small-button" type="button">Cancel</button>
+        <button id="save-allowed-error-confirm" class="add-button" type="submit">Save</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="delete-url-dialog" class="profile-dialog">
     <div class="dialog-body">
       <h2>Delete saved Base URL</h2>
@@ -982,6 +1007,15 @@
     const deleteUrlError = document.querySelector('#delete-url-error');
     const deleteUrlCancel = document.querySelector('#delete-url-cancel');
     const deleteUrlConfirm = document.querySelector('#delete-url-confirm');
+    const allowedErrorProfileSelect = document.querySelector('#allowed-error-profile');
+    const saveAllowedErrorButton = document.querySelector('#save-allowed-error');
+    const deleteAllowedErrorButton = document.querySelector('#delete-allowed-error');
+    const saveAllowedErrorDialog = document.querySelector('#save-allowed-error-dialog');
+    const saveAllowedErrorForm = document.querySelector('#save-allowed-error-form');
+    const saveAllowedErrorName = document.querySelector('#save-allowed-error-name');
+    const saveAllowedErrorError = document.querySelector('#save-allowed-error-error');
+    const saveAllowedErrorCancel = document.querySelector('#save-allowed-error-cancel');
+    const saveAllowedErrorConfirm = document.querySelector('#save-allowed-error-confirm');
     const referenceProfileSelect = document.querySelector('#reference-profile');
     const newReferenceProfileButton = document.querySelector('#new-reference-profile');
     const deleteReferenceProfileButton = document.querySelector('#delete-reference-profile');
@@ -1051,6 +1085,7 @@
     let pendingProfileDeletion = null;
     let savedUrls = {};
     let referenceProfiles = {};
+    let allowedErrorProfiles = {};
     const visibleRouteLayers = new Map();
     const selectedTestTypes = new Set();
     const selectedResultFolders = new Set();
@@ -1071,7 +1106,17 @@
       }
       if (savedProfileName) savedProfileSelect.value = savedProfileName;
       else savedProfileSelect.selectedIndex = -1;
-      savedUrlSelect.value = '';
+      savedUrlSelect.value = Object.hasOwn(savedUrls, profile.saved_url_name)
+        ? profile.saved_url_name : '';
+      deleteUrlButton.disabled = !savedUrlSelect.value;
+      allowedErrorProfileSelect.value = Object.hasOwn(
+        allowedErrorProfiles, profile.allowed_error_profile
+      ) ? profile.allowed_error_profile : '';
+      deleteAllowedErrorButton.disabled = !allowedErrorProfileSelect.value;
+      referenceProfileSelect.value = Object.hasOwn(
+        referenceProfiles, profile.reference_profile
+      ) ? profile.reference_profile : 'Initial';
+      updateReferenceProfileControls();
       updateProfileButtons();
     }
 
@@ -1093,8 +1138,12 @@
     }
 
     baseUrlInput.addEventListener('input', () => {
-      savedUrlSelect.value = '';
-      deleteUrlButton.disabled = true;
+      if (savedUrlSelect.value) {
+        savedUrlSelect.value = '';
+        deleteUrlButton.disabled = true;
+      }
+      savedProfileSelect.selectedIndex = -1;
+      updateProfileButtons();
     });
     savedUrlSelect.addEventListener('change', () => {
       const name = savedUrlSelect.value;
@@ -1123,6 +1172,8 @@
         savedUrls = data.urls;
         saveUrlDialog.close();
         renderSavedUrls(data.name);
+        savedProfileSelect.selectedIndex = -1;
+        updateProfileButtons();
       } catch (error) {
         saveUrlError.textContent = error.message;
       } finally {
@@ -1148,6 +1199,8 @@
         savedUrls = data.urls;
         deleteUrlDialog.close();
         renderSavedUrls();
+        savedProfileSelect.selectedIndex = -1;
+        updateProfileButtons();
       } catch (error) {
         deleteUrlError.textContent = error.message;
       } finally {
@@ -1188,7 +1241,11 @@
       renderReferenceProfiles(data, selectedName);
     }
 
-    referenceProfileSelect.addEventListener('change', updateReferenceProfileControls);
+    referenceProfileSelect.addEventListener('change', () => {
+      updateReferenceProfileControls();
+      savedProfileSelect.selectedIndex = -1;
+      updateProfileButtons();
+    });
     newReferenceProfileButton.addEventListener('click', () => {
       referenceProfileUrl.replaceChildren();
       const names = Object.keys(savedUrls).sort((left, right) =>
@@ -1220,6 +1277,8 @@
         });
         newReferenceProfileDialog.close();
         renderReferenceProfiles(data, data.selected);
+        savedProfileSelect.selectedIndex = -1;
+        updateProfileButtons();
       } catch (error) {
         newReferenceProfileError.textContent = error.message;
       } finally {
@@ -1244,6 +1303,8 @@
         });
         deleteReferenceProfileDialog.close();
         renderReferenceProfiles(data, data.selected);
+        savedProfileSelect.selectedIndex = -1;
+        updateProfileButtons();
         await loadJsonGroups();
       } catch (error) {
         deleteReferenceProfileError.textContent = error.message;
@@ -1253,8 +1314,93 @@
     });
 
     function currentOptionValues() {
-      return Object.fromEntries(new FormData(form).entries());
+      return {
+        ...Object.fromEntries(new FormData(form).entries()),
+        saved_url_name: savedUrlSelect.value || null,
+      };
     }
+
+    function renderAllowedErrorProfiles(selectedName = '') {
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = '';
+      allowedErrorProfileSelect.replaceChildren(empty);
+      const names = Object.keys(allowedErrorProfiles).sort((left, right) =>
+        left.localeCompare(right, undefined, {sensitivity: 'base'}));
+      for (const name of names) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        allowedErrorProfileSelect.append(option);
+      }
+      allowedErrorProfileSelect.value = names.includes(selectedName) ? selectedName : '';
+      deleteAllowedErrorButton.disabled = !allowedErrorProfileSelect.value;
+    }
+
+    allowedErrorProfileSelect.addEventListener('change', () => {
+      const values = allowedErrorProfiles[allowedErrorProfileSelect.value];
+      for (const input of toleranceInputs) {
+        input.value = values ? values[input.name] : defaultOptions[input.name];
+      }
+      deleteAllowedErrorButton.disabled = !allowedErrorProfileSelect.value;
+      savedProfileSelect.selectedIndex = -1;
+      updateProfileButtons();
+    });
+    toleranceInputs.forEach(input => input.addEventListener('input', () => {
+      if (allowedErrorProfileSelect.value) {
+        allowedErrorProfileSelect.value = '';
+        deleteAllowedErrorButton.disabled = true;
+      }
+      savedProfileSelect.selectedIndex = -1;
+      updateProfileButtons();
+    }));
+    saveAllowedErrorButton.addEventListener('click', () => {
+      if (![...toleranceInputs].every(input => input.reportValidity())) return;
+      saveAllowedErrorForm.reset();
+      saveAllowedErrorError.textContent = '';
+      saveAllowedErrorDialog.showModal();
+      requestAnimationFrame(() => saveAllowedErrorName.focus());
+    });
+    saveAllowedErrorCancel.addEventListener('click', () =>
+      saveAllowedErrorDialog.close());
+    saveAllowedErrorForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      saveAllowedErrorError.textContent = '';
+      saveAllowedErrorConfirm.disabled = true;
+      try {
+        const values = Object.fromEntries(
+          [...toleranceInputs].map(input => [input.name, input.value]));
+        const data = await fetchJson('/api/allowed-error-profile/save', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name: saveAllowedErrorName.value, values}),
+        });
+        allowedErrorProfiles = data.profiles;
+        saveAllowedErrorDialog.close();
+        renderAllowedErrorProfiles(data.name);
+        savedProfileSelect.selectedIndex = -1;
+        updateProfileButtons();
+      } catch (error) {
+        saveAllowedErrorError.textContent = error.message;
+      } finally {
+        saveAllowedErrorConfirm.disabled = false;
+      }
+    });
+    deleteAllowedErrorButton.addEventListener('click', async () => {
+      const name = allowedErrorProfileSelect.value;
+      if (!name || !window.confirm(`Delete allowed error settings “${name}”?`)) return;
+      try {
+        const data = await fetchJson('/api/allowed-error-profile/delete', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name}),
+        });
+        allowedErrorProfiles = data.profiles;
+        renderAllowedErrorProfiles();
+        savedProfileSelect.selectedIndex = -1;
+        updateProfileButtons();
+      } catch (error) {
+        errorView.textContent = error.message;
+      }
+    });
 
     function renderSavedProfiles(selectedName = '') {
       const emptyOption = document.createElement('option');
@@ -1281,7 +1427,9 @@
         const value = form.elements.namedItem(name).value;
         if (name === 'base_url') return value === String(profile[name]);
         return value !== '' && Number(value) === Number(profile[name]);
-      });
+      }) && (profile.saved_url_name || '') === savedUrlSelect.value
+        && (profile.reference_profile || 'Initial') === referenceProfileSelect.value
+        && (profile.allowed_error_profile || '') === allowedErrorProfileSelect.value;
     }
 
     function updateProfileButtons() {
@@ -2138,9 +2286,11 @@
       savedProfiles = config.profiles || {};
       savedUrls = config.saved_urls || {};
       referenceProfiles = config.reference_profiles?.profiles || {};
+      allowedErrorProfiles = config.allowed_error_profiles || {};
       renderSavedProfiles();
       renderSavedUrls();
-      renderReferenceProfiles(config.reference_profiles || {profiles: {}}, 'Initial');
+      renderReferenceProfiles(config.reference_profiles || {profiles: {}});
+      renderAllowedErrorProfiles();
       applyOptionProfile(
         previousOptions || defaultOptions,
         previousOptions ? previousProfileName || '' : '',
@@ -2149,6 +2299,9 @@
       if (config.urls_error) errorView.textContent = config.urls_error;
       if (config.reference_profiles_error) {
         errorView.textContent = config.reference_profiles_error;
+      }
+      if (config.allowed_error_profiles_error) {
+        errorView.textContent = config.allowed_error_profiles_error;
       }
     }
 
@@ -2215,7 +2368,7 @@
         return;
       }
 
-      const payload = Object.fromEntries(new FormData(form).entries());
+      const payload = currentOptionValues();
       if (savedProfileSelect.value) {
         payload.profile_name = savedProfileSelect.value;
       }

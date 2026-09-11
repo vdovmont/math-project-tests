@@ -35,6 +35,7 @@ from config import (
     SAVED_PROFILES_FILE,
     SAVED_URLS_FILE,
     REFERENCE_PROFILES_FILE,
+    ALLOWED_ERROR_PROFILES_FILE,
     TEST_SELECTION_FILE,
     MAX_PROFILE_NAME_LENGTH,
     MAX_SAVED_PROFILES,
@@ -81,10 +82,14 @@ TOLERANCE_FIELDS = (
 PROFILE_OPTION_NAMES = (
     "base_url",
     *(option_name for option_name, _, _, _ in TOLERANCE_FIELDS),
+    "saved_url_name",
+    "reference_profile",
+    "allowed_error_profile",
 )
 DELETE_PREVIEWS: dict[str, dict[str, object]] = {}
 DELETE_PREVIEW_LOCK = threading.Lock()
 REFERENCE_PROFILE_LOCK = threading.Lock()
+ALLOWED_ERROR_PROFILES_LOCK = threading.Lock()
 
 
 class ProfileStorageError(Exception):
@@ -140,11 +145,7 @@ class RunState:
                 sum(self.expected_test_times.values())
                 + EXPECTED_FINALIZATION_SECONDS
             )
-            previous_profile = (
-                None
-                if options["run_mode"] == "generate-reference"
-                else save_previous_option_profile(options)
-            )
+            previous_profile = save_previous_option_profile(options)
             self.running = True
             self.logs = []
             self.exit_code = None
@@ -777,7 +778,7 @@ def add_test_types(data: object) -> dict[str, object]:
     return {"added": added, "failed": failed}
 
 
-def validate_options(data: object) -> dict[str, object]:
+def validate_profile_values(data: object) -> dict[str, object]:
     if not isinstance(data, dict):
         raise ValueError("Request body must be a JSON object.")
 
@@ -801,13 +802,33 @@ def validate_options(data: object) -> dict[str, object]:
             )
         tolerances[option_name] = value
 
-    enabled_test_types = enabled_input_test_types()
-    if not enabled_test_types:
-        raise ValueError("Enable at least one test group before starting a run.")
-
+    configured_base_url = base_url.strip()
+    saved_url_name = data.get("saved_url_name")
+    if not isinstance(saved_url_name, str) or not saved_url_name:
+        saved_url_name = None
+    allowed_error_profile = data.get("allowed_error_profile")
+    if not isinstance(allowed_error_profile, str) or not allowed_error_profile:
+        allowed_error_profile = None
     reference_name = data.get("reference_profile", "Initial")
     if not isinstance(reference_name, str) or not reference_name:
         raise ValueError("Select a reference profile.")
+    return {
+        "base_url": configured_base_url,
+        "saved_url_name": saved_url_name,
+        "reference_profile": reference_name,
+        "allowed_error_profile": allowed_error_profile,
+        **tolerances,
+    }
+
+
+def validate_options(data: object) -> dict[str, object]:
+    profile_values = validate_profile_values(data)
+    base_url = str(profile_values["base_url"])
+    reference_name = str(profile_values["reference_profile"])
+    enabled_test_types = enabled_input_test_types()
+    if not enabled_test_types:
+        raise ValueError("Enable at least one test group before starting a run.")
+    configured_base_url = base_url
     if reference_name == "Initial":
         reference_folder = tester.JSON_DATA_FOLDER
         progress_reference_folder = tester.JSON_DATA_FOLDER
@@ -838,7 +859,9 @@ def validate_options(data: object) -> dict[str, object]:
             reference_url_name = None
 
     return {
+        **profile_values,
         "base_url": base_url.strip(),
+        "configured_base_url": configured_base_url,
         "json_data_folder": str(tester.JSON_DATA_FOLDER),
         "tests_folder": str(tester.TESTS_FOLDER),
         "timeout": tester.REQUEST_TIMEOUT_SECONDS,
@@ -849,12 +872,16 @@ def validate_options(data: object) -> dict[str, object]:
         "progress_reference_folder": str(progress_reference_folder),
         "reference_url_name": reference_url_name,
         "run_mode": run_mode,
-        **tolerances,
     }
 
 
 def default_option_profile() -> dict[str, object]:
-    profile: dict[str, object] = {"base_url": tester.BASE_URL}
+    profile: dict[str, object] = {
+        "base_url": tester.BASE_URL,
+        "saved_url_name": None,
+        "reference_profile": "Initial",
+        "allowed_error_profile": None,
+    }
     profile.update(
         {
             option_name: default
@@ -865,7 +892,9 @@ def default_option_profile() -> dict[str, object]:
 
 
 def option_profile(options: dict[str, object]) -> dict[str, object]:
-    return {name: options[name] for name in PROFILE_OPTION_NAMES}
+    profile = {name: options.get(name) for name in PROFILE_OPTION_NAMES}
+    profile["base_url"] = options.get("configured_base_url", options["base_url"])
+    return profile
 
 
 def validate_saved_profile_name(value: object) -> str:
@@ -905,7 +934,7 @@ def load_option_profile_store() -> tuple[
         if raw_previous is None:
             previous = None
         elif isinstance(raw_previous, dict):
-            previous = option_profile(validate_options(raw_previous))
+            previous = option_profile(validate_profile_values(raw_previous))
         else:
             raise ValueError("saved profile file has invalid previous options")
         raw_profiles = saved_data.get("profiles")
@@ -925,7 +954,7 @@ def load_option_profile_store() -> tuple[
                 )
             if not isinstance(raw_profile, dict):
                 raise ValueError(f"profile '{name}' has invalid options")
-            profiles[name] = option_profile(validate_options(raw_profile))
+            profiles[name] = option_profile(validate_profile_values(raw_profile))
             normalized_names.add(normalized_name)
         profiles = dict(
             sorted(profiles.items(), key=lambda item: item[0].casefold())
@@ -1002,7 +1031,7 @@ def save_named_option_profile(data: object) -> dict[str, object]:
         raise ValueError("Request body must be a JSON object.")
     name = validate_saved_profile_name(data.get("name"))
     raw_options = data.get("options")
-    profile = option_profile(validate_options(raw_options))
+    profile = option_profile(validate_profile_values(raw_options))
     previous, previous_profile, profiles = load_option_profile_store()
     if any(existing.casefold() == name.casefold() for existing in profiles):
         raise ValueError(f"A profile named '{name}' already exists.")
@@ -1043,6 +1072,42 @@ def validate_base_url(value: object) -> str:
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise ValueError("Base URL must be a valid HTTP or HTTPS URL.")
     return url
+
+
+def rename_reference_in_option_profiles(old_name: str, new_name: str) -> None:
+    """Keep Previous and named option profiles aligned with a generated reference."""
+    try:
+        with SAVED_PROFILES_FILE.open("r", encoding="utf-8") as file:
+            payload = json.load(file)
+    except FileNotFoundError:
+        return
+    if not isinstance(payload, dict):
+        raise ProfileStorageError("Could not update saved profiles: invalid format")
+    changed = False
+    candidates = [payload.get("previous")]
+    profiles = payload.get("profiles")
+    if isinstance(profiles, dict):
+        candidates.extend(profiles.values())
+    for candidate in candidates:
+        if (
+            isinstance(candidate, dict)
+            and candidate.get("reference_profile") == old_name
+        ):
+            candidate["reference_profile"] = new_name
+            changed = True
+    if not changed:
+        return
+    temporary_file = SAVED_PROFILES_FILE.with_suffix(
+        SAVED_PROFILES_FILE.suffix + ".tmp"
+    )
+    try:
+        with temporary_file.open("w", encoding="utf-8", newline="") as file:
+            json.dump(payload, file, indent=2, ensure_ascii=False)
+            file.write("\n")
+        temporary_file.replace(SAVED_PROFILES_FILE)
+    except OSError:
+        temporary_file.unlink(missing_ok=True)
+        raise
 
 
 def load_saved_urls() -> dict[str, str]:
@@ -1113,6 +1178,106 @@ def delete_named_url(data: object) -> dict[str, object]:
     del urls[matching_name]
     write_saved_urls(urls)
     return {"deleted": matching_name, "urls": urls}
+
+
+def tolerance_values(data: object) -> dict[str, float]:
+    if not isinstance(data, dict):
+        raise ValueError("Allowed-error values must be a JSON object.")
+    values: dict[str, float] = {}
+    for option_name, _, label, _ in TOLERANCE_FIELDS:
+        try:
+            value = float(data.get(option_name, ""))
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"{label} tolerance must be a number.") from error
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(
+                f"{label} tolerance must be a finite, non-negative percentage."
+            )
+        values[option_name] = value
+    return values
+
+
+def load_allowed_error_profiles() -> dict[str, dict[str, float]]:
+    try:
+        with ALLOWED_ERROR_PROFILES_FILE.open("r", encoding="utf-8") as file:
+            payload = json.load(file)
+    except FileNotFoundError:
+        return {}
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ProfileStorageError(
+            f"Could not read allowed-error profiles: {error}"
+        ) from error
+    try:
+        if not isinstance(payload, dict) or payload.get("version") != 1:
+            raise ValueError("unsupported format")
+        raw_profiles = payload.get("profiles")
+        if not isinstance(raw_profiles, dict) or len(raw_profiles) > MAX_SAVED_PROFILES:
+            raise ValueError("invalid profiles object")
+        profiles: dict[str, dict[str, float]] = {}
+        normalized_names: set[str] = set()
+        for raw_name, raw_values in raw_profiles.items():
+            name = validate_saved_profile_name(raw_name)
+            if name.casefold() in normalized_names:
+                raise ValueError("duplicate profile names")
+            normalized_names.add(name.casefold())
+            profiles[name] = tolerance_values(raw_values)
+        return dict(sorted(profiles.items(), key=lambda item: item[0].casefold()))
+    except ValueError as error:
+        raise ProfileStorageError(
+            f"Could not load allowed-error profiles: {error}"
+        ) from error
+
+
+def write_allowed_error_profiles(profiles: dict[str, dict[str, float]]) -> None:
+    temporary_file = ALLOWED_ERROR_PROFILES_FILE.with_suffix(
+        ALLOWED_ERROR_PROFILES_FILE.suffix + ".tmp"
+    )
+    try:
+        with temporary_file.open("w", encoding="utf-8", newline="") as file:
+            json.dump(
+                {"version": 1, "profiles": profiles},
+                file,
+                indent=2,
+                ensure_ascii=False,
+            )
+            file.write("\n")
+        temporary_file.replace(ALLOWED_ERROR_PROFILES_FILE)
+    except OSError:
+        temporary_file.unlink(missing_ok=True)
+        raise
+
+
+def save_allowed_error_profile(data: object) -> dict[str, object]:
+    if not isinstance(data, dict):
+        raise ValueError("Request body must be a JSON object.")
+    name = validate_saved_profile_name(data.get("name"))
+    values = tolerance_values(data.get("values"))
+    with ALLOWED_ERROR_PROFILES_LOCK:
+        profiles = load_allowed_error_profiles()
+        if any(existing.casefold() == name.casefold() for existing in profiles):
+            raise ValueError(f"An allowed-error profile named '{name}' already exists.")
+        if len(profiles) >= MAX_SAVED_PROFILES:
+            raise ValueError(f"At most {MAX_SAVED_PROFILES} profiles can be saved.")
+        profiles[name] = values
+        profiles = dict(sorted(profiles.items(), key=lambda item: item[0].casefold()))
+        write_allowed_error_profiles(profiles)
+    return {"name": name, "values": values, "profiles": profiles}
+
+
+def delete_allowed_error_profile(data: object) -> dict[str, object]:
+    if not isinstance(data, dict):
+        raise ValueError("Request body must be a JSON object.")
+    name = validate_saved_profile_name(data.get("name"))
+    with ALLOWED_ERROR_PROFILES_LOCK:
+        profiles = load_allowed_error_profiles()
+        matching_name = next(
+            (item for item in profiles if item.casefold() == name.casefold()), None
+        )
+        if matching_name is None:
+            raise ValueError(f"Allowed-error profile '{name}' does not exist.")
+        del profiles[matching_name]
+        write_allowed_error_profiles(profiles)
+    return {"deleted": matching_name, "profiles": profiles}
 
 
 def load_reference_profiles() -> dict[str, dict[str, object]]:
@@ -1263,6 +1428,7 @@ def finalize_reference_profile(
         profile["status"] = "generated" if generated else "pending"
         profiles[new_name] = profile
         write_reference_profiles(profiles)
+    rename_reference_in_option_profiles(old_name, new_name)
 
 
 def delete_reference_profile(data: object) -> dict[str, object]:
@@ -2031,6 +2197,7 @@ POST_PATHS = frozenset({
     "/api/delete-preview", "/api/delete", "/api/profile/save", "/api/profile/delete",
     "/api/url/save", "/api/url/delete",
     "/api/reference-profile/create", "/api/reference-profile/delete",
+    "/api/allowed-error-profile/save", "/api/allowed-error-profile/delete",
 })
 
 
@@ -2044,6 +2211,7 @@ def handle_get(request) -> None:
         profiles_error = None
         urls_error = None
         reference_profiles_error = None
+        allowed_error_profiles_error = None
         try:
             previous, previous_profile, profiles = load_option_profile_store()
         except ProfileStorageError as error:
@@ -2064,6 +2232,12 @@ def handle_get(request) -> None:
             reference_profiles = {"profiles": {}, "initial": {"name": "Initial"}}
             reference_profiles_error = str(error)
             print(reference_profiles_error, file=sys.stderr)
+        try:
+            allowed_error_profiles = load_allowed_error_profiles()
+        except ProfileStorageError as error:
+            allowed_error_profiles = {}
+            allowed_error_profiles_error = str(error)
+            print(allowed_error_profiles_error, file=sys.stderr)
         request.send_json(
             {
                 "default": default_option_profile(),
@@ -2075,6 +2249,8 @@ def handle_get(request) -> None:
                 "urls_error": urls_error,
                 "reference_profiles": reference_profiles,
                 "reference_profiles_error": reference_profiles_error,
+                "allowed_error_profiles": allowed_error_profiles,
+                "allowed_error_profiles_error": allowed_error_profiles_error,
             }
         )
         return
@@ -2181,6 +2357,12 @@ def handle_post(request_path: str, data: object) -> tuple[object, int]:
         status = HTTPStatus.OK
     elif request_path == "/api/reference-profile/delete":
         result = delete_reference_profile(data)
+        status = HTTPStatus.OK
+    elif request_path == "/api/allowed-error-profile/save":
+        result = save_allowed_error_profile(data)
+        status = HTTPStatus.OK
+    elif request_path == "/api/allowed-error-profile/delete":
+        result = delete_allowed_error_profile(data)
         status = HTTPStatus.OK
     else:
         with RUN_STATE.lock:

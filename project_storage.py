@@ -13,6 +13,7 @@ from config import (
     SAVED_PROFILES_FILE,
     SAVED_URLS_FILE,
     REFERENCE_PROFILES_FILE,
+    ALLOWED_ERROR_PROFILES_FILE,
     TEST_SELECTION_FILE,
 )
 
@@ -34,6 +35,8 @@ def migrate_legacy_storage(root: Path) -> None:
          root / SAVED_URLS_FILE.relative_to(PROJECT_FOLDER)),
         (root / ".json_http_tester_gui_reference_profiles.json",
          root / REFERENCE_PROFILES_FILE.relative_to(PROJECT_FOLDER)),
+        (root / ".json_http_tester_gui_allowed_error_profiles.json",
+         root / ALLOWED_ERROR_PROFILES_FILE.relative_to(PROJECT_FOLDER)),
     ]
     current_json_root = root / JSON_DATA_ROOT.relative_to(PROJECT_FOLDER)
     if current_json_root.is_dir():

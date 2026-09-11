@@ -61,6 +61,7 @@ def parse_arguments(arguments: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--tests-folder", type=Path, default=TESTS_FOLDER)
     parser.add_argument("--reference-folder", type=Path)
     parser.add_argument("--generate-reference-folder", type=Path)
+    parser.add_argument("--append-reference-outputs", action="store_true")
     parser.add_argument("--reference-name")
     parser.add_argument("--comparison-reference-label", default="Initial")
     parser.add_argument("--comparison-test-label")
@@ -288,8 +289,9 @@ def generate_reference_outputs(args: argparse.Namespace, started_at: datetime) -
     ):
         print("Reference generation folder contains unsupported files.", file=sys.stderr)
         return 2
-    for item in existing_items:
-        item.unlink()
+    if not args.append_reference_outputs:
+        for item in existing_items:
+            item.unlink()
 
     getqueue_url = build_url(args.base_url, GETQUEUE_REQUEST)
     print(f"GET {getqueue_url}")
@@ -300,16 +302,18 @@ def generate_reference_outputs(args: argparse.Namespace, started_at: datetime) -
         print(f"Could not read MathCore metadata: {error}", file=sys.stderr)
         return 1
 
-    timestamp = started_at.strftime("%Y.%m.%d-%H.%M.%S")
-    safe_url_name = safe_folder_component(args.reference_name)
-    safe_version = safe_folder_component(version)[:80]
-    suffix = f"-{safe_version}-{timestamp}"
-    available_name_length = MAX_REFERENCE_FOLDER_NAME_LENGTH - len(suffix)
-    final_name = f"{safe_url_name[:available_name_length]}{suffix}"
-    final_folder = temporary_folder.parent / final_name
-    if final_folder.exists():
-        print(f"Reference folder already exists: {display_path(final_folder)}", file=sys.stderr)
-        return 1
+    final_folder = temporary_folder
+    if not args.append_reference_outputs:
+        timestamp = started_at.strftime("%Y.%m.%d-%H.%M.%S")
+        safe_url_name = safe_folder_component(args.reference_name)
+        safe_version = safe_folder_component(version)[:80]
+        suffix = f"-{safe_version}-{timestamp}"
+        available_name_length = MAX_REFERENCE_FOLDER_NAME_LENGTH - len(suffix)
+        final_name = f"{safe_url_name[:available_name_length]}{suffix}"
+        final_folder = temporary_folder.parent / final_name
+        if final_folder.exists():
+            print(f"Reference folder already exists: {display_path(final_folder)}", file=sys.stderr)
+            return 1
 
     output_folder = temporary_folder
     had_error = False
@@ -324,7 +328,7 @@ def generate_reference_outputs(args: argparse.Namespace, started_at: datetime) -
                 args.poll_interval,
                 "-output.json",
             )
-            if output_folder == temporary_folder:
+            if not args.append_reference_outputs and output_folder == temporary_folder:
                 temporary_folder.rename(final_folder)
                 output_folder = final_folder
                 output_file = output_folder / output_file.name
@@ -339,7 +343,7 @@ def generate_reference_outputs(args: argparse.Namespace, started_at: datetime) -
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
             print(f"Invalid JSON or response: {error}", file=sys.stderr)
             had_error = True
-    if output_folder == temporary_folder:
+    if not args.append_reference_outputs and output_folder == temporary_folder:
         return 1
     print(f"Reference outputs folder: {display_path(output_folder)}")
     return 1 if had_error else 0

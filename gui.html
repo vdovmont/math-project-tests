@@ -1308,7 +1308,10 @@
       newReferenceProfileButton.disabled = testRunRunning;
       deleteReferenceProfileButton.disabled =
         testRunRunning || Object.keys(referenceProfiles).length === 0;
-      const pending = name !== 'Initial' && referenceProfiles[name]?.status === 'pending';
+      const pending = name !== 'Initial' && (
+        referenceProfiles[name]?.status === 'pending'
+        || referenceProfiles[name]?.missing_outputs?.length > 0
+      );
       if (!testRunRunning) {
         runButton.textContent = pending ? 'Generate reference outputs' : 'Start test run';
       }
@@ -2334,6 +2337,9 @@
                 body: JSON.stringify({name: group.name, enabled: requestedState}),
               });
               applyEnabledState(Boolean(result.enabled));
+              reloadReferenceProfiles(referenceProfileSelect.value).catch(error => {
+                errorView.textContent = error.message;
+              });
             } catch (error) {
               applyEnabledState(!requestedState);
               window.alert(error.message);
@@ -2379,7 +2385,8 @@
         statusBadge.textContent = 'Stopped';
         statusBadge.classList.add('failed');
       } else if (
-        status.run_mode === 'generate-reference' && status.exit_code === 0
+        ['generate-reference', 'append-reference'].includes(status.run_mode)
+        && status.exit_code === 0
       ) {
         statusBadge.textContent = 'Done';
         statusBadge.classList.add('success');
@@ -2400,7 +2407,7 @@
       runButton.textContent = status.stopping
         ? 'Stopping...'
         : status.running
-          ? status.run_mode === 'generate-reference'
+          ? ['generate-reference', 'append-reference'].includes(status.run_mode)
             ? 'Stop reference generation'
             : 'Stop test run'
           : 'Start test run';

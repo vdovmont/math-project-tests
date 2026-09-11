@@ -170,7 +170,7 @@ class RunState:
             self.active_query = None
             self.run_folder = None
             self.run_options = dict(options)
-            if options["run_mode"] == "generate-reference":
+            if options["run_mode"] in {"generate-reference", "append-reference"}:
                 self.run_folder = Path(str(options["reference_folder"])).resolve()
             self.stopping = False
             self.stopped = False
@@ -336,13 +336,15 @@ class RunState:
             argument = [f"--{cli_name}", str(options[option_name])]
             command.extend(argument)
             display_command.extend(argument)
-        if options["run_mode"] == "generate-reference":
+        if options["run_mode"] in {"generate-reference", "append-reference"}:
             generation_arguments = [
                 "--generate-reference-folder",
                 str(options["reference_folder"]),
                 "--reference-name",
                 str(options["reference_url_name"]),
             ]
+            if options["run_mode"] == "append-reference":
+                generation_arguments.append("--append-reference-outputs")
             command.extend(generation_arguments)
             display_command.extend(generation_arguments)
         else:
@@ -462,7 +464,7 @@ class RunState:
             options = dict(self.run_options)
             run_root = (
                 JSON_DATA_ROOT
-                if options["run_mode"] == "generate-reference"
+                if options["run_mode"] in {"generate-reference", "append-reference"}
                 else Path(str(options["tests_folder"]))
             )
             if not run_root.is_absolute():
@@ -504,7 +506,10 @@ class RunState:
         self.worker_finished.wait(timeout=5)
 
         try:
-            if run_folder.is_dir():
+            if options["run_mode"] == "append-reference":
+                for test_type in options["enabled_test_types"]:
+                    (run_folder / f"{test_type}-output.json").unlink(missing_ok=True)
+            elif run_folder.is_dir():
                 shutil.rmtree(run_folder)
             if options["run_mode"] == "generate-reference":
                 run_folder.mkdir()
@@ -858,11 +863,21 @@ def validate_options(data: object) -> dict[str, object]:
             raise ValueError(f"Reference profile '{reference_name}' does not exist.")
         reference = reference_profiles[matching_name]
         reference_folder = JSON_DATA_ROOT / str(reference["folder"])
-        if reference["status"] == "pending":
-            run_mode = "generate-reference"
+        missing_outputs = [
+            name
+            for name in enabled_test_types
+            if not (reference_folder / f"{name}-output.json").is_file()
+        ]
+        if missing_outputs:
+            run_mode = (
+                "generate-reference"
+                if reference["status"] == "pending"
+                else "append-reference"
+            )
             base_url = str(reference["url"])
             progress_reference_folder = tester.JSON_DATA_FOLDER
             reference_url_name = str(reference["url_name"])
+            enabled_test_types = missing_outputs
         else:
             run_mode = "test"
             progress_reference_folder = reference_folder
@@ -1376,8 +1391,17 @@ def validate_reference_profile_name(value: object) -> str:
 
 
 def reference_profile_payload() -> dict[str, object]:
+    profiles = load_reference_profiles()
+    enabled_types = enabled_input_test_types()
+    for profile in profiles.values():
+        folder = JSON_DATA_ROOT / str(profile["folder"])
+        profile["missing_outputs"] = [
+            name
+            for name in enabled_types
+            if not (folder / f"{name}-output.json").is_file()
+        ]
     return {
-        "profiles": load_reference_profiles(),
+        "profiles": profiles,
         "initial": {
             "name": "Initial",
             "folder": "initial",

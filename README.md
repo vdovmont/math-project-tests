@@ -72,6 +72,11 @@ profiles persist separately in
 `Settings/.json_http_tester_gui_reference_profiles.json`. Deleting a non-Initial
 profile also deletes its complete reference folder.
 
+If a group was disabled during reference generation and is enabled later, the
+selected Reference profile reports the missing output and the Runner switches to
+**Generate reference outputs**. That run sends only inputs whose enabled groups
+are missing outputs; its expected time and progress also cover only those groups.
+
 Each test report identifies the comparison as `Initial (version)`, `vs`, and
 `saved URL name (version)`. A generated Reference profile already contains its
 version in its name, so no second version is appended to that label. When no

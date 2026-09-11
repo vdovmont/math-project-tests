@@ -61,6 +61,12 @@ TOLERANCE_FIELDS = (
         tester.CALCULATION_TIME_TOLERANCE_PERCENT,
     ),
     (
+        "jobs_tolerance_percent",
+        "jobs-tolerance-percent",
+        "Jobs",
+        tester.JOBS_TOLERANCE_PERCENT,
+    ),
+    (
         "total_distance_tolerance_percent",
         "total-distance-tolerance-percent",
         "Total distance",
@@ -77,12 +83,6 @@ TOLERANCE_FIELDS = (
         "total-duration-tolerance-percent",
         "Total time",
         tester.TOTAL_DURATION_TOLERANCE_PERCENT,
-    ),
-    (
-        "jobs_tolerance_percent",
-        "jobs-tolerance-percent",
-        "Jobs",
-        tester.JOBS_TOLERANCE_PERCENT,
     ),
 )
 PROFILE_OPTION_NAMES = (

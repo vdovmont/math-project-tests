@@ -666,6 +666,31 @@ def create_comparison_report(
             )
         ]
         values_passed = time_status != "FAILED"
+
+        test_jobs_taken, test_jobs_total = test_metrics["jobs"]
+        expected_jobs_taken, expected_jobs_total = expected_metrics["jobs"]
+        jobs_difference = test_jobs_taken - expected_jobs_taken
+        tolerated_jobs_taken = jobs_value_with_tolerance(
+            expected_jobs_taken, tolerances["jobs"]
+        )
+        jobs_status = jobs_comparison_status(
+            test_jobs_taken, expected_jobs_taken, tolerated_jobs_taken
+        )
+        rows.append(
+            (
+                "Jobs",
+                format_jobs(expected_jobs_taken, expected_jobs_total),
+                format_jobs(tolerated_jobs_taken, expected_jobs_total),
+                format_jobs(test_jobs_taken, test_jobs_total),
+                format_difference(jobs_difference, integer=True),
+                format_difference_percentage(
+                    jobs_difference, expected_jobs_taken
+                ),
+                PASS_MARK if jobs_status == "PASSED" else jobs_status,
+            )
+        )
+        values_passed = values_passed and jobs_status != "FAILED"
+
         for key, label in (
             ("totalDistance", "Total distance"),
             ("totalValue", "Total value"),
@@ -692,30 +717,6 @@ def create_comparison_report(
                 )
             )
             values_passed = values_passed and value_status != "FAILED"
-
-        test_jobs_taken, test_jobs_total = test_metrics["jobs"]
-        expected_jobs_taken, expected_jobs_total = expected_metrics["jobs"]
-        jobs_difference = test_jobs_taken - expected_jobs_taken
-        tolerated_jobs_taken = jobs_value_with_tolerance(
-            expected_jobs_taken, tolerances["jobs"]
-        )
-        jobs_status = jobs_comparison_status(
-            test_jobs_taken, expected_jobs_taken, tolerated_jobs_taken
-        )
-        rows.append(
-            (
-                "Jobs",
-                format_jobs(expected_jobs_taken, expected_jobs_total),
-                format_jobs(tolerated_jobs_taken, expected_jobs_total),
-                format_jobs(test_jobs_taken, test_jobs_total),
-                format_difference(jobs_difference, integer=True),
-                format_difference_percentage(
-                    jobs_difference, expected_jobs_taken
-                ),
-                PASS_MARK if jobs_status == "PASSED" else jobs_status,
-            )
-        )
-        values_passed = values_passed and jobs_status != "FAILED"
 
         table_rows = [
             (

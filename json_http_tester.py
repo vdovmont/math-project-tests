@@ -60,6 +60,8 @@ def parse_arguments(arguments: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--reference-folder", type=Path)
     parser.add_argument("--generate-reference-folder", type=Path)
     parser.add_argument("--reference-name")
+    parser.add_argument("--comparison-reference-label", default="Initial")
+    parser.add_argument("--comparison-test-label")
     parser.add_argument(
         "--test-type",
         dest="test_types",
@@ -499,19 +501,69 @@ def format_jobs(taken: int, total: int) -> str:
     return f"{taken}/{total}"
 
 
+def extract_output_version(output_file: Path) -> str:
+    """Read the MathCore version recorded in an output JSON's state description."""
+    with output_file.open("r", encoding="utf-8") as file:
+        output = json.load(file)
+    if not isinstance(output, dict):
+        raise ValueError("output JSON must contain an object")
+    state = output.get("state")
+    description = state.get("desc") if isinstance(state, dict) else None
+    if not isinstance(description, str) or not description.strip():
+        raise ValueError("output JSON has no valid state description")
+    version = description.strip()
+    if version.startswith("Ver:"):
+        version = version.removeprefix("Ver:").strip()
+    if not version:
+        raise ValueError("output JSON has no valid version")
+    return version
+
+
+def first_output_version(input_files: list[Path], folder: Path, suffix: str) -> str:
+    """Return the version from the first usable output in input-file order."""
+    for input_file in input_files:
+        output_file = folder / f"{input_file.name.removesuffix('-input.json')}{suffix}"
+        if not output_file.is_file():
+            continue
+        try:
+            return extract_output_version(output_file)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            continue
+    return "version unavailable"
+
+
 def create_comparison_report(
     input_files: list[Path],
     run_folder: Path,
     json_data_folder: Path,
     tolerance_percents: dict[str, float] | None = None,
+    reference_label: str = "Initial",
+    test_label: str = "Test URL",
 ) -> tuple[Path, bool]:
     """Compare generated test JSONs with expected output JSONs."""
     tolerances = TOLERANCE_PERCENT_DEFAULTS | (tolerance_percents or {})
+    reference_display = reference_label
+    if reference_label.casefold() == "initial":
+        reference_version = first_output_version(
+            input_files, json_data_folder, "-output.json"
+        )
+        reference_display = f"{reference_label} ({reference_version})"
+    test_version = first_output_version(input_files, run_folder, "-test.json")
+    comparison_lines = [
+        reference_display,
+        "vs",
+        f"{test_label} ({test_version})",
+    ]
     # The leading status lines are filled after all comparisons finish.
     report_parts: list[
         str | list[tuple[str, str, str, str, str, str, str]]
     ] = [
         "",
+        "",
+        "",
+        "",
+        "",
+        *comparison_lines,
         "",
         "",
         "",
@@ -569,9 +621,9 @@ def create_comparison_report(
         rows = [
             (
                 "Calculation time",
-                f"{format_number(test_time)}s",
                 f"{format_number(expected_time)}s",
                 f"{format_number(tolerated_time)}s",
+                f"{format_number(test_time)}s",
                 format_difference(time_difference, suffix="s"),
                 format_percentage_difference(test_time, expected_time),
                 PASS_MARK if time_status == "PASSED" else time_status,
@@ -594,9 +646,9 @@ def create_comparison_report(
             rows.append(
                 (
                     label,
-                    format_number(test_value),
                     format_number(expected_value),
                     format_number(tolerated_expected),
+                    format_number(test_value),
                     format_difference(difference),
                     format_percentage_difference(test_value, expected_value),
                     PASS_MARK if value_status == "PASSED" else value_status,
@@ -616,9 +668,9 @@ def create_comparison_report(
         rows.append(
             (
                 "Jobs",
-                format_jobs(test_jobs_taken, test_jobs_total),
                 format_jobs(expected_jobs_taken, expected_jobs_total),
                 format_jobs(tolerated_jobs_taken, expected_jobs_total),
+                format_jobs(test_jobs_taken, test_jobs_total),
                 format_difference(jobs_difference, integer=True),
                 format_difference_percentage(
                     jobs_difference, expected_jobs_taken
@@ -631,9 +683,9 @@ def create_comparison_report(
         table_rows = [
             (
                 "metric",
-                "test",
                 "expected",
                 "tolerance",
+                "test",
                 "difference",
                 "difference(%)",
                 "status",
@@ -649,7 +701,7 @@ def create_comparison_report(
         comparison_failed = comparison_failed or not values_passed
 
     overall_result = "FAILED" if comparison_failed else "PASSED"
-    report_parts[0] = "Overall test results:"
+    report_parts[0] = "Overall test result:"
     report_parts[1] = f"    {overall_result}"
 
     tables = [part for part in report_parts if isinstance(part, list)]
@@ -830,6 +882,8 @@ def run(arguments: list[str] | None = None) -> int:
             run_folder,
             args.reference_folder or args.json_data_folder,
             tolerance_percents,
+            args.comparison_reference_label,
+            args.comparison_test_label or args.base_url,
         )
         print(f"\nSaved comparison report: {display_path(report_file)}")
     except OSError as error:

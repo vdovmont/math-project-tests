@@ -72,6 +72,12 @@ profiles persist separately in
 `Settings/.json_http_tester_gui_reference_profiles.json`. Deleting a non-Initial
 profile also deletes its complete reference folder.
 
+Each test report identifies the comparison as `Initial (version)`, `vs`, and
+`saved URL name (version)`. A generated Reference profile already contains its
+version in its name, so no second version is appended to that label. When no
+saved URL is selected, the full Base URL is shown. Versions come from the first
+available output JSONs. The same comparison appears above every group snippet.
+
 The **JSON files** tab groups files by the shared name before `-input.json`,
 `-output.json`, and `-test.json`. Expanding a group shows its **Input** file,
 an expandable **References** section containing the **Initial** reference, and an

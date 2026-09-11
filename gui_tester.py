@@ -341,7 +341,11 @@ class RunState:
             display_command.extend(generation_arguments)
         else:
             reference_arguments = [
-                "--reference-folder", str(options["reference_folder"])
+                "--reference-folder", str(options["reference_folder"]),
+                "--comparison-reference-label",
+                str(options["reference_profile_name"]),
+                "--comparison-test-label",
+                str(options.get("saved_url_name") or options["configured_base_url"]),
             ]
             command.extend(reference_arguments)
             display_command.extend(reference_arguments)
@@ -1769,6 +1773,16 @@ def build_json_file_groups() -> dict[str, object]:
             for index, line in enumerate(report_lines)
             if line.startswith("[") and line.endswith("]") and len(line) > 2
         }
+        comparison_lines: list[str] = []
+        first_section = min(section_starts.values(), default=len(report_lines))
+        for index in range(1, first_section - 1):
+            if report_lines[index].strip().casefold() != "vs":
+                continue
+            previous_line = report_lines[index - 1].strip()
+            next_line = report_lines[index + 1].strip()
+            if previous_line and next_line:
+                comparison_lines = [previous_line, "vs", next_line]
+                break
         for base_name, start in section_starts.items():
             group = grouped.get(base_name)
             if group is None:
@@ -1782,7 +1796,13 @@ def build_json_file_groups() -> dict[str, object]:
                 ),
                 len(report_lines),
             )
-            snippet = "\n".join(report_lines[start:end]).strip() + "\n"
+            section_lines = report_lines[start:end]
+            snippet_lines = (
+                [*comparison_lines, "", "", "", *section_lines]
+                if comparison_lines
+                else section_lines
+            )
+            snippet = "\n".join(snippet_lines).strip() + "\n"
             test_results = group["test_results"]
             if isinstance(test_results, list):
                 folder_name = relative_path.parent.as_posix()

@@ -860,6 +860,20 @@
     </form>
   </dialog>
 
+  <dialog id="select-delete-url-dialog" class="profile-dialog">
+    <form id="select-delete-url-form" class="dialog-body upload-form">
+      <h2>Delete saved Base URL</h2>
+      <p>Select the saved Base URL you want to delete.</p>
+      <label>Base URL profile
+        <select id="delete-url-select" required></select>
+      </label>
+      <div class="dialog-actions">
+        <button id="select-delete-url-cancel" class="small-button" type="button">Cancel</button>
+        <button class="danger-button" type="submit">Continue</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="delete-url-dialog" class="profile-dialog">
     <div class="dialog-body">
       <h2>Delete saved Base URL</h2>
@@ -868,6 +882,32 @@
       <div class="dialog-actions">
         <button id="delete-url-cancel" class="small-button" type="button">Cancel</button>
         <button id="delete-url-confirm" class="danger-button" type="button">Delete</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="select-delete-allowed-error-dialog" class="profile-dialog">
+    <form id="select-delete-allowed-error-form" class="dialog-body upload-form">
+      <h2>Delete Allowed error profile</h2>
+      <p>Select the Allowed error profile you want to delete.</p>
+      <label>Allowed error profile
+        <select id="delete-allowed-error-select" required></select>
+      </label>
+      <div class="dialog-actions">
+        <button id="select-delete-allowed-error-cancel" class="small-button" type="button">Cancel</button>
+        <button class="danger-button" type="submit">Continue</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="delete-allowed-error-dialog" class="profile-dialog">
+    <div class="dialog-body">
+      <h2>Delete Allowed error profile</h2>
+      <p>Delete "<strong id="delete-allowed-error-name"></strong>"?</p>
+      <p id="delete-allowed-error-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="delete-allowed-error-cancel" class="small-button" type="button">Cancel</button>
+        <button id="delete-allowed-error-confirm" class="danger-button" type="button">Delete</button>
       </div>
     </div>
   </dialog>
@@ -883,6 +923,20 @@
       <div class="dialog-actions">
         <button id="new-reference-profile-cancel" class="small-button" type="button">Cancel</button>
         <button id="new-reference-profile-confirm" class="add-button" type="submit">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="select-delete-reference-profile-dialog" class="profile-dialog">
+    <form id="select-delete-reference-profile-form" class="dialog-body upload-form">
+      <h2>Delete reference profile</h2>
+      <p>Select the reference profile you want to delete.</p>
+      <label>Reference profile
+        <select id="delete-reference-profile-select" required></select>
+      </label>
+      <div class="dialog-actions">
+        <button id="select-delete-reference-profile-cancel" class="small-button" type="button">Cancel</button>
+        <button class="danger-button" type="submit">Continue</button>
       </div>
     </form>
   </dialog>
@@ -1005,6 +1059,10 @@
     const saveUrlError = document.querySelector('#save-url-error');
     const saveUrlCancel = document.querySelector('#save-url-cancel');
     const saveUrlConfirm = document.querySelector('#save-url-confirm');
+    const selectDeleteUrlDialog = document.querySelector('#select-delete-url-dialog');
+    const selectDeleteUrlForm = document.querySelector('#select-delete-url-form');
+    const deleteUrlSelect = document.querySelector('#delete-url-select');
+    const selectDeleteUrlCancel = document.querySelector('#select-delete-url-cancel');
     const deleteUrlDialog = document.querySelector('#delete-url-dialog');
     const deleteUrlName = document.querySelector('#delete-url-name');
     const deleteUrlError = document.querySelector('#delete-url-error');
@@ -1019,6 +1077,15 @@
     const saveAllowedErrorError = document.querySelector('#save-allowed-error-error');
     const saveAllowedErrorCancel = document.querySelector('#save-allowed-error-cancel');
     const saveAllowedErrorConfirm = document.querySelector('#save-allowed-error-confirm');
+    const selectDeleteAllowedErrorDialog = document.querySelector('#select-delete-allowed-error-dialog');
+    const selectDeleteAllowedErrorForm = document.querySelector('#select-delete-allowed-error-form');
+    const deleteAllowedErrorSelect = document.querySelector('#delete-allowed-error-select');
+    const selectDeleteAllowedErrorCancel = document.querySelector('#select-delete-allowed-error-cancel');
+    const deleteAllowedErrorDialog = document.querySelector('#delete-allowed-error-dialog');
+    const deleteAllowedErrorName = document.querySelector('#delete-allowed-error-name');
+    const deleteAllowedErrorError = document.querySelector('#delete-allowed-error-error');
+    const deleteAllowedErrorCancel = document.querySelector('#delete-allowed-error-cancel');
+    const deleteAllowedErrorConfirm = document.querySelector('#delete-allowed-error-confirm');
     const referenceProfileSelect = document.querySelector('#reference-profile');
     const newReferenceProfileButton = document.querySelector('#new-reference-profile');
     const deleteReferenceProfileButton = document.querySelector('#delete-reference-profile');
@@ -1029,6 +1096,10 @@
     const newReferenceProfileError = document.querySelector('#new-reference-profile-error');
     const newReferenceProfileCancel = document.querySelector('#new-reference-profile-cancel');
     const newReferenceProfileConfirm = document.querySelector('#new-reference-profile-confirm');
+    const selectDeleteReferenceProfileDialog = document.querySelector('#select-delete-reference-profile-dialog');
+    const selectDeleteReferenceProfileForm = document.querySelector('#select-delete-reference-profile-form');
+    const deleteReferenceProfileSelect = document.querySelector('#delete-reference-profile-select');
+    const selectDeleteReferenceProfileCancel = document.querySelector('#select-delete-reference-profile-cancel');
     const deleteReferenceProfileDialog = document.querySelector('#delete-reference-profile-dialog');
     const deleteReferenceProfileName = document.querySelector('#delete-reference-profile-name');
     const deleteReferenceProfileError = document.querySelector('#delete-reference-profile-error');
@@ -1086,6 +1157,9 @@
     let previousProfileName = null;
     let savedProfiles = {};
     let pendingProfileDeletion = null;
+    let pendingUrlDeletion = null;
+    let pendingAllowedErrorDeletion = null;
+    let pendingReferenceDeletion = null;
     let savedUrls = {};
     let referenceProfiles = {};
     let allowedErrorProfiles = {};
@@ -1111,11 +1185,11 @@
       else savedProfileSelect.selectedIndex = -1;
       savedUrlSelect.value = Object.hasOwn(savedUrls, profile.saved_url_name)
         ? profile.saved_url_name : '';
-      deleteUrlButton.disabled = !savedUrlSelect.value;
+      deleteUrlButton.disabled = Object.keys(savedUrls).length === 0;
       allowedErrorProfileSelect.value = Object.hasOwn(
         allowedErrorProfiles, profile.allowed_error_profile
       ) ? profile.allowed_error_profile : '';
-      deleteAllowedErrorButton.disabled = !allowedErrorProfileSelect.value;
+      deleteAllowedErrorButton.disabled = Object.keys(allowedErrorProfiles).length === 0;
       referenceProfileSelect.value = Object.hasOwn(
         referenceProfiles, profile.reference_profile
       ) ? profile.reference_profile : 'Initial';
@@ -1137,13 +1211,13 @@
         savedUrlSelect.append(option);
       }
       savedUrlSelect.value = names.includes(selectedName) ? selectedName : '';
-      deleteUrlButton.disabled = !savedUrlSelect.value;
+      deleteUrlButton.disabled = names.length === 0;
     }
 
     baseUrlInput.addEventListener('input', () => {
       if (savedUrlSelect.value) {
         savedUrlSelect.value = '';
-        deleteUrlButton.disabled = true;
+        deleteUrlButton.disabled = Object.keys(savedUrls).length === 0;
       }
       savedProfileSelect.selectedIndex = -1;
       updateProfileButtons();
@@ -1151,7 +1225,7 @@
     savedUrlSelect.addEventListener('change', () => {
       const name = savedUrlSelect.value;
       baseUrlInput.value = name ? savedUrls[name] : defaultOptions.base_url;
-      deleteUrlButton.disabled = !name;
+      deleteUrlButton.disabled = Object.keys(savedUrls).length === 0;
       savedProfileSelect.selectedIndex = -1;
       updateProfileButtons();
     });
@@ -1184,14 +1258,31 @@
       }
     });
     deleteUrlButton.addEventListener('click', () => {
-      if (!savedUrlSelect.value) return;
-      deleteUrlName.textContent = savedUrlSelect.value;
+      const names = Object.keys(savedUrls).sort((left, right) =>
+        left.localeCompare(right, undefined, {sensitivity: 'base'}));
+      if (!names.length) return;
+      deleteUrlSelect.replaceChildren(...names.map(name => new Option(name, name)));
+      deleteUrlSelect.value = names.includes(savedUrlSelect.value)
+        ? savedUrlSelect.value : names[0];
+      selectDeleteUrlDialog.showModal();
+    });
+    selectDeleteUrlCancel.addEventListener('click', () =>
+      selectDeleteUrlDialog.close());
+    selectDeleteUrlForm.addEventListener('submit', event => {
+      event.preventDefault();
+      pendingUrlDeletion = deleteUrlSelect.value;
+      if (!pendingUrlDeletion) return;
+      selectDeleteUrlDialog.close();
+      deleteUrlName.textContent = pendingUrlDeletion;
       deleteUrlError.textContent = '';
       deleteUrlDialog.showModal();
     });
-    deleteUrlCancel.addEventListener('click', () => deleteUrlDialog.close());
+    deleteUrlCancel.addEventListener('click', () => {
+      pendingUrlDeletion = null;
+      deleteUrlDialog.close();
+    });
     deleteUrlConfirm.addEventListener('click', async () => {
-      const name = savedUrlSelect.value;
+      const name = pendingUrlDeletion;
       if (!name) return;
       deleteUrlConfirm.disabled = true;
       try {
@@ -1200,6 +1291,7 @@
           body: JSON.stringify({name}),
         });
         savedUrls = data.urls;
+        pendingUrlDeletion = null;
         deleteUrlDialog.close();
         renderSavedUrls();
         savedProfileSelect.selectedIndex = -1;
@@ -1214,7 +1306,8 @@
     function updateReferenceProfileControls() {
       const name = referenceProfileSelect.value;
       newReferenceProfileButton.disabled = testRunRunning;
-      deleteReferenceProfileButton.disabled = testRunRunning || name === 'Initial';
+      deleteReferenceProfileButton.disabled =
+        testRunRunning || Object.keys(referenceProfiles).length === 0;
       const pending = name !== 'Initial' && referenceProfiles[name]?.status === 'pending';
       if (!testRunRunning) {
         runButton.textContent = pending ? 'Generate reference outputs' : 'Start test run';
@@ -1289,15 +1382,32 @@
       }
     });
     deleteReferenceProfileButton.addEventListener('click', () => {
-      if (referenceProfileSelect.value === 'Initial') return;
-      deleteReferenceProfileName.textContent = referenceProfileSelect.value;
+      const names = Object.keys(referenceProfiles);
+      if (!names.length) return;
+      deleteReferenceProfileSelect.replaceChildren(
+        ...names.map(name => new Option(name, name)));
+      deleteReferenceProfileSelect.value = names.includes(referenceProfileSelect.value)
+        ? referenceProfileSelect.value : names[0];
+      selectDeleteReferenceProfileDialog.showModal();
+    });
+    selectDeleteReferenceProfileCancel.addEventListener('click', () =>
+      selectDeleteReferenceProfileDialog.close());
+    selectDeleteReferenceProfileForm.addEventListener('submit', event => {
+      event.preventDefault();
+      pendingReferenceDeletion = deleteReferenceProfileSelect.value;
+      if (!pendingReferenceDeletion) return;
+      selectDeleteReferenceProfileDialog.close();
+      deleteReferenceProfileName.textContent = pendingReferenceDeletion;
       deleteReferenceProfileError.textContent = '';
       deleteReferenceProfileDialog.showModal();
     });
-    deleteReferenceProfileCancel.addEventListener(
-      'click', () => deleteReferenceProfileDialog.close());
+    deleteReferenceProfileCancel.addEventListener('click', () => {
+      pendingReferenceDeletion = null;
+      deleteReferenceProfileDialog.close();
+    });
     deleteReferenceProfileConfirm.addEventListener('click', async () => {
-      const name = referenceProfileSelect.value;
+      const name = pendingReferenceDeletion;
+      if (!name) return;
       deleteReferenceProfileConfirm.disabled = true;
       try {
         const data = await fetchJson('/api/reference-profile/delete', {
@@ -1305,6 +1415,7 @@
           body: JSON.stringify({name}),
         });
         deleteReferenceProfileDialog.close();
+        pendingReferenceDeletion = null;
         renderReferenceProfiles(data, data.selected);
         savedProfileSelect.selectedIndex = -1;
         updateProfileButtons();
@@ -1337,7 +1448,7 @@
         allowedErrorProfileSelect.append(option);
       }
       allowedErrorProfileSelect.value = names.includes(selectedName) ? selectedName : '';
-      deleteAllowedErrorButton.disabled = !allowedErrorProfileSelect.value;
+      deleteAllowedErrorButton.disabled = names.length === 0;
     }
 
     allowedErrorProfileSelect.addEventListener('change', () => {
@@ -1345,14 +1456,14 @@
       for (const input of toleranceInputs) {
         input.value = values ? values[input.name] : defaultOptions[input.name];
       }
-      deleteAllowedErrorButton.disabled = !allowedErrorProfileSelect.value;
+      deleteAllowedErrorButton.disabled = Object.keys(allowedErrorProfiles).length === 0;
       savedProfileSelect.selectedIndex = -1;
       updateProfileButtons();
     });
     toleranceInputs.forEach(input => input.addEventListener('input', () => {
       if (allowedErrorProfileSelect.value) {
         allowedErrorProfileSelect.value = '';
-        deleteAllowedErrorButton.disabled = true;
+        deleteAllowedErrorButton.disabled = Object.keys(allowedErrorProfiles).length === 0;
       }
       savedProfileSelect.selectedIndex = -1;
       updateProfileButtons();
@@ -1388,20 +1499,50 @@
         saveAllowedErrorConfirm.disabled = false;
       }
     });
-    deleteAllowedErrorButton.addEventListener('click', async () => {
-      const name = allowedErrorProfileSelect.value;
-      if (!name || !window.confirm(`Delete allowed error settings “${name}”?`)) return;
+    deleteAllowedErrorButton.addEventListener('click', () => {
+      const names = Object.keys(allowedErrorProfiles).sort((left, right) =>
+        left.localeCompare(right, undefined, {sensitivity: 'base'}));
+      if (!names.length) return;
+      deleteAllowedErrorSelect.replaceChildren(
+        ...names.map(name => new Option(name, name)));
+      deleteAllowedErrorSelect.value = names.includes(allowedErrorProfileSelect.value)
+        ? allowedErrorProfileSelect.value : names[0];
+      selectDeleteAllowedErrorDialog.showModal();
+    });
+    selectDeleteAllowedErrorCancel.addEventListener('click', () =>
+      selectDeleteAllowedErrorDialog.close());
+    selectDeleteAllowedErrorForm.addEventListener('submit', event => {
+      event.preventDefault();
+      pendingAllowedErrorDeletion = deleteAllowedErrorSelect.value;
+      if (!pendingAllowedErrorDeletion) return;
+      selectDeleteAllowedErrorDialog.close();
+      deleteAllowedErrorName.textContent = pendingAllowedErrorDeletion;
+      deleteAllowedErrorError.textContent = '';
+      deleteAllowedErrorDialog.showModal();
+    });
+    deleteAllowedErrorCancel.addEventListener('click', () => {
+      pendingAllowedErrorDeletion = null;
+      deleteAllowedErrorDialog.close();
+    });
+    deleteAllowedErrorConfirm.addEventListener('click', async () => {
+      const name = pendingAllowedErrorDeletion;
+      if (!name) return;
+      deleteAllowedErrorConfirm.disabled = true;
       try {
         const data = await fetchJson('/api/allowed-error-profile/delete', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({name}),
         });
         allowedErrorProfiles = data.profiles;
+        pendingAllowedErrorDeletion = null;
+        deleteAllowedErrorDialog.close();
         renderAllowedErrorProfiles();
         savedProfileSelect.selectedIndex = -1;
         updateProfileButtons();
       } catch (error) {
-        errorView.textContent = error.message;
+        deleteAllowedErrorError.textContent = error.message;
+      } finally {
+        deleteAllowedErrorConfirm.disabled = false;
       }
     });
 

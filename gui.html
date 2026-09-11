@@ -147,6 +147,11 @@
       font-weight: 800;
       cursor: pointer;
     }
+    .console-actions .run-button {
+      width: auto;
+      margin: 0;
+      padding: 7px 12px;
+    }
 
     .run-button:hover:not(:disabled) { background: #195448; }
     .run-button.stop-button {
@@ -166,7 +171,8 @@
       padding: 15px 18px;
       border-bottom: 1px solid var(--border);
     }
-    .console-header h2 { margin: 0; }
+    .console-header h2 { margin: 0; white-space: nowrap; }
+    .console-title-actions { display: flex; align-items: center; flex-shrink: 0; gap: 12px; }
     .console-actions { display: flex; align-items: center; gap: 12px; }
     .timing { color: var(--muted); font-size: 12px; }
 
@@ -556,7 +562,7 @@
       <section class="panel">
         <form id="options-form">
           <div class="options-heading">
-            <h2>Run options</h2>
+            <h2>Profiles</h2>
             <div class="profile-buttons">
               <button id="default-options" class="small-button" type="button" disabled>Default</button>
               <button id="previous-options" class="small-button" type="button" disabled>Previous</button>
@@ -574,6 +580,15 @@
           <label>Base URL
             <input id="base-url" name="base_url" type="url" required>
           </label>
+          <div class="profile-manager">
+            <select id="saved-url" aria-label="Saved Base URL">
+              <option value=""></option>
+            </select>
+            <div class="profile-buttons">
+              <button id="save-url" class="add-button" type="button">Save</button>
+              <button id="delete-url" class="danger-button" type="button" disabled>Delete</button>
+            </div>
+          </div>
           <p class="tolerance-title">Allowed error (%)</p>
           <p class="tolerance-help">Most test values may exceed expected values; Jobs may fall below its expected taken count by this percentage.</p>
           <div class="tolerance-grid">
@@ -590,14 +605,16 @@
               <input name="jobs_tolerance_percent" type="number" min="0" step="any" required>
             </label>
           </div>
-          <button id="run-button" class="run-button" type="submit">Start test run</button>
           <p id="error" class="error" role="alert"></p>
         </form>
       </section>
 
       <section class="panel console-panel">
         <div class="console-header">
-          <h2>Live progress</h2>
+          <div class="console-title-actions">
+            <h2>Live progress</h2>
+            <button id="run-button" class="run-button" type="submit" form="options-form">Start test run</button>
+          </div>
           <div class="console-actions">
             <div id="status" class="status">Idle</div>
             <button id="open-result" class="small-button" type="button" disabled>Open result</button>
@@ -664,7 +681,7 @@
       <section class="panel">
         <form id="optimizer-options-form">
           <div class="options-heading">
-            <h2>Run options</h2>
+            <h2>Profiles</h2>
             <div class="profile-buttons">
               <button id="optimizer-default-options" class="small-button" type="button" disabled>Default</button>
               <button id="optimizer-previous-options" class="small-button" type="button" disabled>Previous</button>
@@ -780,6 +797,33 @@
     </form>
   </dialog>
 
+  <dialog id="save-url-dialog" class="profile-dialog">
+    <form id="save-url-form" class="dialog-body upload-form">
+      <h2>Save Base URL</h2>
+      <p>Enter a name for the current Base URL.</p>
+      <label>URL name
+        <input id="save-url-name" type="text" maxlength="80" required autocomplete="off">
+      </label>
+      <p id="save-url-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="save-url-cancel" class="small-button" type="button">Cancel</button>
+        <button id="save-url-confirm" class="add-button" type="submit">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="delete-url-dialog" class="profile-dialog">
+    <div class="dialog-body">
+      <h2>Delete saved Base URL</h2>
+      <p>Delete “<strong id="delete-url-name"></strong>”?</p>
+      <p id="delete-url-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="delete-url-cancel" class="small-button" type="button">Cancel</button>
+        <button id="delete-url-confirm" class="danger-button" type="button">Delete</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="select-delete-profile-dialog" class="profile-dialog">
     <form id="select-delete-profile-form" class="dialog-body upload-form">
       <h2>Delete options profile</h2>
@@ -876,6 +920,21 @@
     const confirmDeleteProfileError = document.querySelector('#confirm-delete-profile-error');
     const confirmDeleteProfileCancel = document.querySelector('#confirm-delete-profile-cancel');
     const confirmDeleteProfileButton = document.querySelector('#confirm-delete-profile');
+    const baseUrlInput = document.querySelector('#base-url');
+    const savedUrlSelect = document.querySelector('#saved-url');
+    const saveUrlButton = document.querySelector('#save-url');
+    const deleteUrlButton = document.querySelector('#delete-url');
+    const saveUrlDialog = document.querySelector('#save-url-dialog');
+    const saveUrlForm = document.querySelector('#save-url-form');
+    const saveUrlName = document.querySelector('#save-url-name');
+    const saveUrlError = document.querySelector('#save-url-error');
+    const saveUrlCancel = document.querySelector('#save-url-cancel');
+    const saveUrlConfirm = document.querySelector('#save-url-confirm');
+    const deleteUrlDialog = document.querySelector('#delete-url-dialog');
+    const deleteUrlName = document.querySelector('#delete-url-name');
+    const deleteUrlError = document.querySelector('#delete-url-error');
+    const deleteUrlCancel = document.querySelector('#delete-url-cancel');
+    const deleteUrlConfirm = document.querySelector('#delete-url-confirm');
     const runButton = document.querySelector('#run-button');
     const statusBadge = document.querySelector('#status');
     const consoleView = document.querySelector('#console');
@@ -928,6 +987,7 @@
     let previousProfileName = null;
     let savedProfiles = {};
     let pendingProfileDeletion = null;
+    let savedUrls = {};
     const visibleRouteLayers = new Map();
     const selectedTestTypes = new Set();
     const selectedResultFolders = new Set();
@@ -948,8 +1008,89 @@
       }
       if (savedProfileName) savedProfileSelect.value = savedProfileName;
       else savedProfileSelect.selectedIndex = -1;
+      savedUrlSelect.value = '';
       updateProfileButtons();
     }
+
+    function renderSavedUrls(selectedName = '') {
+      const emptyOption = document.createElement('option');
+      emptyOption.value = '';
+      emptyOption.textContent = '';
+      savedUrlSelect.replaceChildren(emptyOption);
+      const names = Object.keys(savedUrls).sort((left, right) =>
+        left.localeCompare(right, undefined, {sensitivity: 'base'}));
+      for (const name of names) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        savedUrlSelect.append(option);
+      }
+      savedUrlSelect.value = names.includes(selectedName) ? selectedName : '';
+      deleteUrlButton.disabled = !savedUrlSelect.value;
+    }
+
+    baseUrlInput.addEventListener('input', () => {
+      savedUrlSelect.value = '';
+      deleteUrlButton.disabled = true;
+    });
+    savedUrlSelect.addEventListener('change', () => {
+      const name = savedUrlSelect.value;
+      baseUrlInput.value = name ? savedUrls[name] : defaultOptions.base_url;
+      deleteUrlButton.disabled = !name;
+      savedProfileSelect.selectedIndex = -1;
+      updateProfileButtons();
+    });
+    saveUrlButton.addEventListener('click', () => {
+      if (!baseUrlInput.reportValidity()) return;
+      saveUrlForm.reset();
+      saveUrlError.textContent = '';
+      saveUrlDialog.showModal();
+      requestAnimationFrame(() => saveUrlName.focus());
+    });
+    saveUrlCancel.addEventListener('click', () => saveUrlDialog.close());
+    saveUrlForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      saveUrlError.textContent = '';
+      saveUrlConfirm.disabled = true;
+      try {
+        const data = await fetchJson('/api/url/save', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name: saveUrlName.value, url: baseUrlInput.value}),
+        });
+        savedUrls = data.urls;
+        saveUrlDialog.close();
+        renderSavedUrls(data.name);
+      } catch (error) {
+        saveUrlError.textContent = error.message;
+      } finally {
+        saveUrlConfirm.disabled = false;
+      }
+    });
+    deleteUrlButton.addEventListener('click', () => {
+      if (!savedUrlSelect.value) return;
+      deleteUrlName.textContent = savedUrlSelect.value;
+      deleteUrlError.textContent = '';
+      deleteUrlDialog.showModal();
+    });
+    deleteUrlCancel.addEventListener('click', () => deleteUrlDialog.close());
+    deleteUrlConfirm.addEventListener('click', async () => {
+      const name = savedUrlSelect.value;
+      if (!name) return;
+      deleteUrlConfirm.disabled = true;
+      try {
+        const data = await fetchJson('/api/url/delete', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name}),
+        });
+        savedUrls = data.urls;
+        deleteUrlDialog.close();
+        renderSavedUrls();
+      } catch (error) {
+        deleteUrlError.textContent = error.message;
+      } finally {
+        deleteUrlConfirm.disabled = false;
+      }
+    });
 
     function currentOptionValues() {
       return Object.fromEntries(new FormData(form).entries());
@@ -1796,12 +1937,15 @@
       previousOptions = config.previous;
       previousProfileName = config.previous_profile;
       savedProfiles = config.profiles || {};
+      savedUrls = config.saved_urls || {};
       renderSavedProfiles();
+      renderSavedUrls();
       applyOptionProfile(
         previousOptions || defaultOptions,
         previousOptions ? previousProfileName || '' : '',
       );
       if (config.profiles_error) errorView.textContent = config.profiles_error;
+      if (config.urls_error) errorView.textContent = config.urls_error;
     }
 
     async function pollStatus() {

@@ -43,6 +43,15 @@ GUI was launched. Routine browser API access lines are hidden from that console.
 While a test is running, the green **Start test run** button becomes a red
 **Stop test run** button. Stopping calls `STOP_REQUEST` for the active query,
 terminates the local runner, and removes only the newly created test-run folder.
+The run button is directly beside the Live progress heading.
+
+Base URLs can be saved under a separate name using the selector and Save/Delete
+buttons below the URL field. They are stored independently in
+`Settings/.json_http_tester_gui_urls.json`. The selector starts blank and returns
+to blank whenever the URL is edited or changed by an options profile. A saved
+name appears after selecting it directly from the URL list or immediately after
+saving the current URL under that name. Selecting the blank entry restores the
+default Tester Base URL.
 
 The **JSON files** tab groups files by the shared name before `-input.json`,
 `-output.json`, and `-test.json`. Input and expected output appear first in each

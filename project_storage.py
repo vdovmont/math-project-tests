@@ -10,6 +10,7 @@ from config import (
     TEST_RESULTS_FOLDER,
     OPTIMIZER_DATA_FOLDER,
     SAVED_PROFILES_FILE,
+    SAVED_URLS_FILE,
     TEST_SELECTION_FILE,
 )
 
@@ -25,6 +26,8 @@ def migrate_legacy_storage(root: Path) -> None:
          root / SAVED_PROFILES_FILE.relative_to(PROJECT_FOLDER)),
         (root / ".json_http_tester_gui_test_selection.json",
          root / TEST_SELECTION_FILE.relative_to(PROJECT_FOLDER)),
+        (root / ".json_http_tester_gui_urls.json",
+         root / SAVED_URLS_FILE.relative_to(PROJECT_FOLDER)),
     ]
 
     def validate(source: Path, destination: Path) -> None:

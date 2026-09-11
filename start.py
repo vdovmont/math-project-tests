@@ -83,6 +83,7 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
             self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
             return
         except (gui_tester.ProfileStorageError, gui_tester.TestSelectionStorageError,
+                gui_tester.UrlStorageError,
                 OSError) as error:
             self.send_json({"error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return

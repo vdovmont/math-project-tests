@@ -23,11 +23,11 @@ application. Saved GUI profiles and explicit CLI options still override their
 corresponding defaults. Tester and Optimizer have independent Base URL defaults.
 
 Storage is relative to the scripts, independent of the launch directory:
-`Data/tests/json-data` contains inputs and expected outputs,
+`Data/tests/references/initial` contains inputs and expected outputs,
 `Data/tests/test-results` contains run results, `Data/optimizer` is reserved for
 future use, and `Settings` contains GUI profiles and test selections.
 The launcher automatically creates these directories on startup and migrates the
-old root-level `json-data`, `tests`, and GUI settings files. Migration can be
+old root-level `json-data`, `Data/tests/json-data`, `tests`, and GUI settings files. Migration can be
 repeated safely and stops on conflicting files without overwriting either copy.
 Explicit CLI folder overrides still work and remain relative to the launch
 directory when supplied as relative paths.
@@ -161,7 +161,7 @@ defaults in the `json_http_tester.py` section of `config.py` and accepts optiona
 
 ```sh
 python start.py --tester --base-url http://localhost:9000 \
-  --json-data-folder ./Data/tests/json-data --tests-folder ./Data/tests/test-results \
+  --json-data-folder ./Data/tests/references/initial --tests-folder ./Data/tests/test-results \
   --timeout 30 --poll-interval 1 \
   --calculation-time-tolerance-percent 0 \
   --total-distance-tolerance-percent 0 \

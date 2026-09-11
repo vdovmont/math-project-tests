@@ -45,7 +45,7 @@ PROCESSING_PERCENT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 FILE_ROOTS = {
-    "json-data": ("JSON data", tester.JSON_DATA_FOLDER),
+    "json-data": ("References", tester.JSON_DATA_FOLDER),
     "tests": ("Tests", tester.TESTS_FOLDER),
 }
 TOLERANCE_FIELDS = (

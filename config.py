@@ -15,7 +15,8 @@ from pathlib import Path
 PROJECT_FOLDER = Path(__file__).resolve().parent
 DATA_FOLDER = PROJECT_FOLDER / "Data"
 SETTINGS_FOLDER = PROJECT_FOLDER / "Settings"
-JSON_DATA_FOLDER = DATA_FOLDER / "tests" / "json-data"
+JSON_DATA_ROOT = DATA_FOLDER / "tests" / "references"
+JSON_DATA_FOLDER = JSON_DATA_ROOT / "initial"
 TEST_RESULTS_FOLDER = DATA_FOLDER / "tests" / "test-results"
 OPTIMIZER_DATA_FOLDER = DATA_FOLDER / "optimizer"
 

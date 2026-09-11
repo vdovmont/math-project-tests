@@ -32,6 +32,7 @@ from config import (
     TOTAL_VALUE_TOLERANCE_PERCENT,
     JOBS_TOLERANCE_PERCENT,
     PASS_MARK,
+    MAX_REFERENCE_FOLDER_NAME_LENGTH,
 )
 
 
@@ -56,6 +57,9 @@ def parse_arguments(arguments: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--base-url", default=BASE_URL)
     parser.add_argument("--json-data-folder", type=Path, default=JSON_DATA_FOLDER)
     parser.add_argument("--tests-folder", type=Path, default=TESTS_FOLDER)
+    parser.add_argument("--reference-folder", type=Path)
+    parser.add_argument("--generate-reference-folder", type=Path)
+    parser.add_argument("--reference-name")
     parser.add_argument(
         "--test-type",
         dest="test_types",
@@ -190,6 +194,7 @@ def process_input_file(
     base_url: str,
     timeout: float,
     poll_interval: float,
+    output_suffix: str = "-test.json",
 ) -> Path:
     with input_file.open("r", encoding="utf-8") as file:
         input_json = json.load(file)
@@ -222,12 +227,113 @@ def process_input_file(
             print(f"\r{' ' * progress_width}\r", end="", flush=True)
 
     base_name = input_file.name.removesuffix("-input.json")
-    output_file = run_folder / f"{base_name}-test.json"
+    output_file = run_folder / f"{base_name}{output_suffix}"
     with output_file.open("w", encoding="utf-8") as file:
         json.dump(state_response, file, indent=4, ensure_ascii=False)
         file.write("\n")
 
     return output_file
+
+
+def select_input_files(json_data_folder: Path, test_types: list[str] | None) -> list[Path]:
+    all_input_files = sorted(json_data_folder.glob("*-input.json"))
+    if not test_types:
+        return all_input_files
+    requested_types = set(test_types)
+    available_types = {
+        file.name.removesuffix("-input.json") for file in all_input_files
+    }
+    unknown_types = sorted(requested_types - available_types)
+    if unknown_types:
+        raise ValueError(f"Unknown test type(s): {', '.join(unknown_types)}")
+    return [
+        file
+        for file in all_input_files
+        if file.name.removesuffix("-input.json") in requested_types
+    ]
+
+
+def generate_reference_outputs(args: argparse.Namespace, started_at: datetime) -> int:
+    temporary_folder = args.generate_reference_folder
+    if temporary_folder is None or not args.reference_name:
+        print("Error: reference generation requires a folder and name.", file=sys.stderr)
+        return 2
+    if not args.json_data_folder.is_dir():
+        print(f"JSON data folder does not exist: {display_path(args.json_data_folder)}", file=sys.stderr)
+        return 2
+    try:
+        input_files = select_input_files(args.json_data_folder, args.test_types)
+    except ValueError as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 2
+    if not input_files:
+        print(f"No *-input.json files found in: {display_path(args.json_data_folder)}", file=sys.stderr)
+        return 2
+    if not temporary_folder.is_dir():
+        print("Reference generation folder does not exist.", file=sys.stderr)
+        return 2
+    existing_items = list(temporary_folder.iterdir())
+    if any(
+        not item.is_file() or not item.name.endswith("-output.json")
+        for item in existing_items
+    ):
+        print("Reference generation folder contains unsupported files.", file=sys.stderr)
+        return 2
+    for item in existing_items:
+        item.unlink()
+
+    getqueue_url = build_url(args.base_url, GETQUEUE_REQUEST)
+    print(f"GET {getqueue_url}")
+    try:
+        queue_data = get_queue_data(args.base_url, GETQUEUE_REQUEST, args.timeout)
+        version, _ = extract_mathcore_metadata(queue_data)
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
+        print(f"Could not read MathCore metadata: {error}", file=sys.stderr)
+        return 1
+
+    timestamp = started_at.strftime("%Y.%m.%d-%H.%M.%S")
+    safe_url_name = safe_folder_component(args.reference_name)
+    safe_version = safe_folder_component(version)[:80]
+    suffix = f"-{safe_version}-{timestamp}"
+    available_name_length = MAX_REFERENCE_FOLDER_NAME_LENGTH - len(suffix)
+    final_name = f"{safe_url_name[:available_name_length]}{suffix}"
+    final_folder = temporary_folder.parent / final_name
+    if final_folder.exists():
+        print(f"Reference folder already exists: {display_path(final_folder)}", file=sys.stderr)
+        return 1
+
+    output_folder = temporary_folder
+    had_error = False
+    for input_file in input_files:
+        print(f"\n=== {input_file.name} ===")
+        try:
+            output_file = process_input_file(
+                input_file,
+                output_folder,
+                args.base_url,
+                args.timeout,
+                args.poll_interval,
+                "-output.json",
+            )
+            if output_folder == temporary_folder:
+                temporary_folder.rename(final_folder)
+                output_folder = final_folder
+                output_file = output_folder / output_file.name
+                print(f"Renamed reference folder: {display_path(output_folder)}")
+            print(f"Saved result: {display_path(output_file)}")
+        except HTTPError as error:
+            print(f"HTTP request failed with status {error.code}: {error.reason}", file=sys.stderr)
+            had_error = True
+        except (URLError, TimeoutError, OSError) as error:
+            print(f"Request or file error: {error}", file=sys.stderr)
+            had_error = True
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            print(f"Invalid JSON or response: {error}", file=sys.stderr)
+            had_error = True
+    if output_folder == temporary_folder:
+        return 1
+    print(f"Reference outputs folder: {display_path(output_folder)}")
+    return 1 if had_error else 0
 
 
 def require_number(data: dict[str, object], field: str) -> int | float:
@@ -619,6 +725,8 @@ def run(arguments: list[str] | None = None) -> int:
     if not args.base_url.strip():
         print("Error: base URL must not be empty.", file=sys.stderr)
         return 2
+    if args.generate_reference_folder is not None:
+        return generate_reference_outputs(args, started_at)
 
     try:
         args.tests_folder.mkdir(parents=True, exist_ok=True)
@@ -678,25 +786,11 @@ def run(arguments: list[str] | None = None) -> int:
         )
         return 2
 
-    all_input_files = sorted(args.json_data_folder.glob("*-input.json"))
-    input_files = all_input_files
-    if args.test_types:
-        requested_types = set(args.test_types)
-        available_types = {
-            file.name.removesuffix("-input.json") for file in all_input_files
-        }
-        unknown_types = sorted(requested_types - available_types)
-        if unknown_types:
-            print(
-                f"Unknown test type(s): {', '.join(unknown_types)}",
-                file=sys.stderr,
-            )
-            return 2
-        input_files = [
-            file
-            for file in all_input_files
-            if file.name.removesuffix("-input.json") in requested_types
-        ]
+    try:
+        input_files = select_input_files(args.json_data_folder, args.test_types)
+    except ValueError as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 2
     if not input_files:
         print(
             f"No *-input.json files found in: "
@@ -734,7 +828,7 @@ def run(arguments: list[str] | None = None) -> int:
         report_file, comparison_failed = create_comparison_report(
             input_files,
             run_folder,
-            args.json_data_folder,
+            args.reference_folder or args.json_data_folder,
             tolerance_percents,
         )
         print(f"\nSaved comparison report: {display_path(report_file)}")

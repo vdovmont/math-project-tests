@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 import json_http_tester as tester
+from config import JSON_DATA_ROOT
 
 from config import (
     SCRIPT_FOLDER,
@@ -33,9 +34,11 @@ from config import (
     DISPLAY_DATETIME_FORMAT,
     SAVED_PROFILES_FILE,
     SAVED_URLS_FILE,
+    REFERENCE_PROFILES_FILE,
     TEST_SELECTION_FILE,
     MAX_PROFILE_NAME_LENGTH,
     MAX_SAVED_PROFILES,
+    MAX_REFERENCE_FOLDER_NAME_LENGTH,
 )
 
 
@@ -46,6 +49,7 @@ PROCESSING_PERCENT_PATTERN = re.compile(
 )
 FILE_ROOTS = {
     "json-data": ("References", tester.JSON_DATA_FOLDER),
+    "references": ("References", JSON_DATA_ROOT),
     "tests": ("Tests", tester.TESTS_FOLDER),
 }
 TOLERANCE_FIELDS = (
@@ -80,6 +84,7 @@ PROFILE_OPTION_NAMES = (
 )
 DELETE_PREVIEWS: dict[str, dict[str, object]] = {}
 DELETE_PREVIEW_LOCK = threading.Lock()
+REFERENCE_PROFILE_LOCK = threading.Lock()
 
 
 class ProfileStorageError(Exception):
@@ -128,14 +133,18 @@ class RunState:
             if self.running:
                 raise RuntimeError("A test run is already in progress.")
             self.expected_test_times = load_expected_test_times(
-                Path(str(options["json_data_folder"])),
+                Path(str(options["progress_reference_folder"])),
                 [str(name) for name in options["enabled_test_types"]],
             )
             self.expected_time_seconds = (
                 sum(self.expected_test_times.values())
                 + EXPECTED_FINALIZATION_SECONDS
             )
-            previous_profile = save_previous_option_profile(options)
+            previous_profile = (
+                None
+                if options["run_mode"] == "generate-reference"
+                else save_previous_option_profile(options)
+            )
             self.running = True
             self.logs = []
             self.exit_code = None
@@ -154,6 +163,8 @@ class RunState:
             self.active_query = None
             self.run_folder = None
             self.run_options = dict(options)
+            if options["run_mode"] == "generate-reference":
+                self.run_folder = Path(str(options["reference_folder"])).resolve()
             self.stopping = False
             self.stopped = False
             self.stop_requested = False
@@ -189,6 +200,12 @@ class RunState:
             folder_prefix = "Created test-run folder: "
             if line.startswith(folder_prefix):
                 displayed_folder = Path(line.removeprefix(folder_prefix))
+                if not displayed_folder.is_absolute():
+                    displayed_folder = Path.cwd() / displayed_folder
+                self.run_folder = displayed_folder.resolve()
+            reference_folder_prefix = "Renamed reference folder: "
+            if line.startswith(reference_folder_prefix):
+                displayed_folder = Path(line.removeprefix(reference_folder_prefix))
                 if not displayed_folder.is_absolute():
                     displayed_folder = Path.cwd() / displayed_folder
                 self.run_folder = displayed_folder.resolve()
@@ -312,6 +329,21 @@ class RunState:
             argument = [f"--{cli_name}", str(options[option_name])]
             command.extend(argument)
             display_command.extend(argument)
+        if options["run_mode"] == "generate-reference":
+            generation_arguments = [
+                "--generate-reference-folder",
+                str(options["reference_folder"]),
+                "--reference-name",
+                str(options["reference_url_name"]),
+            ]
+            command.extend(generation_arguments)
+            display_command.extend(generation_arguments)
+        else:
+            reference_arguments = [
+                "--reference-folder", str(options["reference_folder"])
+            ]
+            command.extend(reference_arguments)
+            display_command.extend(reference_arguments)
         for test_type in options["enabled_test_types"]:
             argument = ["--test-type", str(test_type)]
             command.extend(argument)
@@ -350,6 +382,26 @@ class RunState:
                         break
             with self.lock:
                 stop_requested = self.stop_requested
+                renamed_reference_folder = self.run_folder
+            if (
+                options["run_mode"] == "generate-reference"
+                and renamed_reference_folder is not None
+                and renamed_reference_folder.name
+                != Path(str(options["reference_folder"])).name
+            ):
+                try:
+                    finalize_reference_profile(
+                        str(options["reference_profile_name"]),
+                        renamed_reference_folder.name,
+                        generated=exit_code == 0 and not stop_requested,
+                    )
+                    with self.lock:
+                        if self.run_options is not None:
+                            self.run_options["reference_profile_name"] = (
+                                renamed_reference_folder.name
+                            )
+                except (OSError, ProfileStorageError) as error:
+                    self._append_log(f"Could not update reference profile: {error}")
             if report_path is not None and not stop_requested:
                 try:
                     overall_status, relative_report_path = read_result_summary(
@@ -397,12 +449,16 @@ class RunState:
             process = self.process
             run_folder = self.run_folder
             options = dict(self.run_options)
-            tests_root = Path(str(options["tests_folder"]))
-            if not tests_root.is_absolute():
-                tests_root = Path.cwd() / tests_root
-            tests_root = tests_root.resolve()
-            if run_folder == tests_root or not path_is_within(run_folder, tests_root):
-                raise RuntimeError("Refusing to remove an invalid test-run folder.")
+            run_root = (
+                JSON_DATA_ROOT
+                if options["run_mode"] == "generate-reference"
+                else Path(str(options["tests_folder"]))
+            )
+            if not run_root.is_absolute():
+                run_root = Path.cwd() / run_root
+            run_root = run_root.resolve()
+            if run_folder == run_root or not path_is_within(run_folder, run_root):
+                raise RuntimeError("Refusing to remove an invalid run folder.")
             self.stopping = True
 
         stop_url = (
@@ -439,16 +495,18 @@ class RunState:
         try:
             if run_folder.is_dir():
                 shutil.rmtree(run_folder)
+            if options["run_mode"] == "generate-reference":
+                run_folder.mkdir()
         except OSError as error:
             with self.lock:
                 self.stopping = False
                 self.stopped = True
             raise RuntimeError(
-                f"The calculation stopped, but its test folder could not be deleted: {error}"
+                f"The calculation stopped, but its run folder could not be reset: {error}"
             ) from error
         self._append_log(f"Stopped query {query}.")
         self._append_log(
-            f"Deleted test-run folder: {tester.display_path(run_folder)}"
+            f"Reset run folder: {tester.display_path(run_folder)}"
         )
         with self.lock:
             self.stopping = False
@@ -477,6 +535,14 @@ class RunState:
                 "stopped": self.stopped,
                 "active_query": self.active_query,
                 "run_id": self.run_id,
+                "run_mode": (
+                    self.run_options.get("run_mode") if self.run_options else None
+                ),
+                "reference_profile_name": (
+                    self.run_options.get("reference_profile_name")
+                    if self.run_options
+                    else None
+                ),
             }
 
 
@@ -739,6 +805,38 @@ def validate_options(data: object) -> dict[str, object]:
     if not enabled_test_types:
         raise ValueError("Enable at least one test group before starting a run.")
 
+    reference_name = data.get("reference_profile", "Initial")
+    if not isinstance(reference_name, str) or not reference_name:
+        raise ValueError("Select a reference profile.")
+    if reference_name == "Initial":
+        reference_folder = tester.JSON_DATA_FOLDER
+        progress_reference_folder = tester.JSON_DATA_FOLDER
+        run_mode = "test"
+        reference_url_name = None
+    else:
+        reference_profiles = load_reference_profiles()
+        matching_name = next(
+            (
+                name
+                for name in reference_profiles
+                if name.casefold() == reference_name.casefold()
+            ),
+            None,
+        )
+        if matching_name is None:
+            raise ValueError(f"Reference profile '{reference_name}' does not exist.")
+        reference = reference_profiles[matching_name]
+        reference_folder = JSON_DATA_ROOT / str(reference["folder"])
+        if reference["status"] == "pending":
+            run_mode = "generate-reference"
+            base_url = str(reference["url"])
+            progress_reference_folder = tester.JSON_DATA_FOLDER
+            reference_url_name = str(reference["url_name"])
+        else:
+            run_mode = "test"
+            progress_reference_folder = reference_folder
+            reference_url_name = None
+
     return {
         "base_url": base_url.strip(),
         "json_data_folder": str(tester.JSON_DATA_FOLDER),
@@ -746,6 +844,11 @@ def validate_options(data: object) -> dict[str, object]:
         "timeout": tester.REQUEST_TIMEOUT_SECONDS,
         "poll_interval": tester.STATE_POLL_INTERVAL_SECONDS,
         "enabled_test_types": enabled_test_types,
+        "reference_profile_name": reference_name,
+        "reference_folder": str(reference_folder),
+        "progress_reference_folder": str(progress_reference_folder),
+        "reference_url_name": reference_url_name,
+        "run_mode": run_mode,
         **tolerances,
     }
 
@@ -1012,6 +1115,185 @@ def delete_named_url(data: object) -> dict[str, object]:
     return {"deleted": matching_name, "urls": urls}
 
 
+def load_reference_profiles() -> dict[str, dict[str, object]]:
+    try:
+        with REFERENCE_PROFILES_FILE.open("r", encoding="utf-8") as file:
+            payload = json.load(file)
+    except FileNotFoundError:
+        return {}
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ProfileStorageError(f"Could not read reference profiles: {error}") from error
+    try:
+        if not isinstance(payload, dict) or payload.get("version") != 1:
+            raise ValueError("reference profile file has an unsupported format")
+        raw_profiles = payload.get("profiles")
+        if not isinstance(raw_profiles, dict) or len(raw_profiles) > MAX_SAVED_PROFILES:
+            raise ValueError("reference profile file has an invalid profiles object")
+        profiles: dict[str, dict[str, object]] = {}
+        normalized_names: set[str] = set()
+        for raw_name, raw_profile in raw_profiles.items():
+            name = validate_reference_profile_name(raw_name)
+            if name.casefold() in normalized_names:
+                raise ValueError("reference profile names must be unique")
+            normalized_names.add(name.casefold())
+            if name == "Initial" or not isinstance(raw_profile, dict):
+                raise ValueError("reference profile contains an invalid entry")
+            url_name = validate_saved_profile_name(raw_profile.get("url_name"))
+            url = validate_base_url(raw_profile.get("url"))
+            folder = raw_profile.get("folder")
+            status = raw_profile.get("status")
+            created_at = raw_profile.get("created_at")
+            if (
+                not isinstance(folder, str)
+                or Path(folder).name != folder
+                or status not in {"pending", "generated"}
+                or not isinstance(created_at, str)
+            ):
+                raise ValueError("reference profile contains invalid metadata")
+            profiles[name] = {
+                "url_name": url_name,
+                "url": url,
+                "folder": folder,
+                "status": status,
+                "created_at": created_at,
+            }
+        return dict(
+            sorted(
+                profiles.items(),
+                key=lambda item: str(item[1]["created_at"]),
+                reverse=True,
+            )
+        )
+    except ValueError as error:
+        raise ProfileStorageError(f"Could not load reference profiles: {error}") from error
+
+
+def write_reference_profiles(profiles: dict[str, dict[str, object]]) -> None:
+    temporary_file = REFERENCE_PROFILES_FILE.with_suffix(
+        REFERENCE_PROFILES_FILE.suffix + ".tmp"
+    )
+    try:
+        with temporary_file.open("w", encoding="utf-8", newline="") as file:
+            json.dump(
+                {"version": 1, "profiles": profiles},
+                file,
+                indent=2,
+                ensure_ascii=False,
+            )
+            file.write("\n")
+        temporary_file.replace(REFERENCE_PROFILES_FILE)
+    except OSError:
+        temporary_file.unlink(missing_ok=True)
+        raise
+
+
+def validate_reference_profile_name(value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("Reference profile name must not be empty.")
+    name = value.strip()
+    if len(name) > MAX_REFERENCE_FOLDER_NAME_LENGTH:
+        raise ValueError(
+            f"Reference profile name must not exceed {MAX_REFERENCE_FOLDER_NAME_LENGTH} characters."
+        )
+    if any(ord(character) < 32 for character in name):
+        raise ValueError("Reference profile name must not contain control characters.")
+    return name
+
+
+def reference_profile_payload() -> dict[str, object]:
+    return {
+        "profiles": load_reference_profiles(),
+        "initial": {
+            "name": "Initial",
+            "folder": "initial",
+            "status": "generated",
+        },
+    }
+
+
+def create_reference_profile(data: object) -> dict[str, object]:
+    if not isinstance(data, dict):
+        raise ValueError("Request body must be a JSON object.")
+    url_name = validate_saved_profile_name(data.get("url_name"))
+    with REFERENCE_PROFILE_LOCK:
+        urls = load_saved_urls()
+        matching_url_name = next(
+            (name for name in urls if name.casefold() == url_name.casefold()), None
+        )
+        if matching_url_name is None:
+            raise ValueError(f"Saved URL '{url_name}' does not exist.")
+        profiles = load_reference_profiles()
+        if any(name.casefold() == matching_url_name.casefold() for name in profiles):
+            raise ValueError(f"Reference profile '{matching_url_name}' already exists.")
+        folder_name = tester.safe_folder_component(matching_url_name)
+        folder = (JSON_DATA_ROOT / folder_name).resolve()
+        if not path_is_within(folder, JSON_DATA_ROOT.resolve()) or folder.exists():
+            raise ValueError(f"Reference folder '{folder_name}' already exists.")
+        folder.mkdir(parents=False)
+        profiles[matching_url_name] = {
+            "url_name": matching_url_name,
+            "url": urls[matching_url_name],
+            "folder": folder_name,
+            "status": "pending",
+            "created_at": datetime.now().isoformat(timespec="microseconds"),
+        }
+        try:
+            write_reference_profiles(profiles)
+        except OSError:
+            folder.rmdir()
+            raise
+    result = reference_profile_payload()
+    result["selected"] = matching_url_name
+    return result
+
+
+def finalize_reference_profile(
+    old_name: str, new_name: str, *, generated: bool
+) -> None:
+    with REFERENCE_PROFILE_LOCK:
+        profiles = load_reference_profiles()
+        profile = profiles.pop(old_name, None)
+        if profile is None:
+            raise ProfileStorageError(
+                f"Pending reference profile '{old_name}' could not be found."
+            )
+        if any(name.casefold() == new_name.casefold() for name in profiles):
+            raise ProfileStorageError(f"Reference profile '{new_name}' already exists.")
+        profile["folder"] = new_name
+        profile["status"] = "generated" if generated else "pending"
+        profiles[new_name] = profile
+        write_reference_profiles(profiles)
+
+
+def delete_reference_profile(data: object) -> dict[str, object]:
+    if not isinstance(data, dict):
+        raise ValueError("Request body must be a JSON object.")
+    name = validate_reference_profile_name(data.get("name"))
+    if name == "Initial":
+        raise ValueError("The Initial reference profile cannot be deleted.")
+    with RUN_STATE.lock:
+        if RUN_STATE.running:
+            raise RuntimeError("Wait for the current run to finish before deleting a reference profile.")
+    with REFERENCE_PROFILE_LOCK:
+        profiles = load_reference_profiles()
+        matching_name = next(
+            (item for item in profiles if item.casefold() == name.casefold()), None
+        )
+        if matching_name is None:
+            raise ValueError(f"Reference profile '{name}' does not exist.")
+        folder = (JSON_DATA_ROOT / str(profiles[matching_name]["folder"])).resolve()
+        if not path_is_within(folder, JSON_DATA_ROOT.resolve()) or folder == tester.JSON_DATA_FOLDER.resolve():
+            raise RuntimeError("Refusing to delete an invalid reference folder.")
+        if folder.exists():
+            shutil.rmtree(folder)
+        del profiles[matching_name]
+        write_reference_profiles(profiles)
+    result = reference_profile_payload()
+    result["deleted"] = matching_name
+    result["selected"] = "Initial"
+    return result
+
+
 def get_file_root(root_name: str) -> tuple[str, Path]:
     try:
         label, configured_path = FILE_ROOTS[root_name]
@@ -1257,6 +1539,31 @@ def build_json_file_groups() -> dict[str, object]:
                 references = group["references"]
                 if isinstance(references, list):
                     references.append(item)
+
+    for profile_name, profile in load_reference_profiles().items():
+        reference_folder = (JSON_DATA_ROOT / str(profile["folder"])).resolve()
+        if not reference_folder.is_dir() or not path_is_within(
+            reference_folder, JSON_DATA_ROOT.resolve()
+        ):
+            continue
+        for discovered_file in reference_folder.glob("*-output.json"):
+            file_path = discovered_file.resolve()
+            if not path_is_within(file_path, reference_folder):
+                continue
+            base_name = file_path.name.removesuffix("-output.json")
+            group = grouped.get(base_name)
+            if group is None:
+                continue
+            references = group["references"]
+            if isinstance(references, list):
+                references.append(
+                    {
+                        "root": "references",
+                        "path": file_path.relative_to(JSON_DATA_ROOT).as_posix(),
+                        "label": profile_name,
+                        "size": file_path.stat().st_size,
+                    }
+                )
 
     for discovered_file in tests_root.rglob("*-test.json"):
         file_path = discovered_file.resolve()
@@ -1717,21 +2024,26 @@ def build_route_groups() -> dict[str, object]:
 
 GET_PATHS = frozenset({
     "/api/config", "/api/files", "/api/file", "/api/routes",
-    "/api/json-files", "/api/status",
+    "/api/json-files", "/api/status", "/api/reference-profiles",
 })
 POST_PATHS = frozenset({
     "/api/start", "/api/stop", "/api/add-test-type", "/api/test-type-enabled",
     "/api/delete-preview", "/api/delete", "/api/profile/save", "/api/profile/delete",
     "/api/url/save", "/api/url/delete",
+    "/api/reference-profile/create", "/api/reference-profile/delete",
 })
 
 
 def handle_get(request) -> None:
     """Serve a Tester read request using the shared HTTP transport."""
     parsed = urlparse(request.path)
+    if parsed.path == "/api/reference-profiles":
+        request.send_json(reference_profile_payload())
+        return
     if parsed.path == "/api/config":
         profiles_error = None
         urls_error = None
+        reference_profiles_error = None
         try:
             previous, previous_profile, profiles = load_option_profile_store()
         except ProfileStorageError as error:
@@ -1746,6 +2058,12 @@ def handle_get(request) -> None:
             saved_urls = {}
             urls_error = str(error)
             print(urls_error, file=sys.stderr)
+        try:
+            reference_profiles = reference_profile_payload()
+        except ProfileStorageError as error:
+            reference_profiles = {"profiles": {}, "initial": {"name": "Initial"}}
+            reference_profiles_error = str(error)
+            print(reference_profiles_error, file=sys.stderr)
         request.send_json(
             {
                 "default": default_option_profile(),
@@ -1755,6 +2073,8 @@ def handle_get(request) -> None:
                 "profiles_error": profiles_error,
                 "saved_urls": saved_urls,
                 "urls_error": urls_error,
+                "reference_profiles": reference_profiles,
+                "reference_profiles_error": reference_profiles_error,
             }
         )
         return
@@ -1855,6 +2175,12 @@ def handle_post(request_path: str, data: object) -> tuple[object, int]:
         status = HTTPStatus.OK
     elif request_path == "/api/url/delete":
         result = delete_named_url(data)
+        status = HTTPStatus.OK
+    elif request_path == "/api/reference-profile/create":
+        result = create_reference_profile(data)
+        status = HTTPStatus.OK
+    elif request_path == "/api/reference-profile/delete":
+        result = delete_reference_profile(data)
         status = HTTPStatus.OK
     else:
         with RUN_STATE.lock:

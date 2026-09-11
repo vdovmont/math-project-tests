@@ -615,6 +615,16 @@
               <input name="jobs_tolerance_percent" type="number" min="0" step="any" required>
             </label>
           </div>
+          <p class="tolerance-title">Reference profile</p>
+          <div class="profile-manager">
+            <select id="reference-profile" name="reference_profile" aria-label="Reference profile">
+              <option value="Initial">Initial</option>
+            </select>
+            <div class="profile-buttons">
+              <button id="new-reference-profile" class="add-button" type="button">New</button>
+              <button id="delete-reference-profile" class="danger-button" type="button" disabled>Delete</button>
+            </div>
+          </div>
           <p id="error" class="error" role="alert"></p>
         </form>
       </section>
@@ -834,6 +844,33 @@
     </div>
   </dialog>
 
+  <dialog id="new-reference-profile-dialog" class="profile-dialog">
+    <form id="new-reference-profile-form" class="dialog-body upload-form">
+      <h2>New reference profile</h2>
+      <p id="new-reference-profile-help">Select the saved URL that will generate the reference outputs.</p>
+      <label>Saved URL
+        <select id="reference-profile-url" required></select>
+      </label>
+      <p id="new-reference-profile-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="new-reference-profile-cancel" class="small-button" type="button">Cancel</button>
+        <button id="new-reference-profile-confirm" class="add-button" type="submit">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="delete-reference-profile-dialog" class="profile-dialog">
+    <div class="dialog-body">
+      <h2>Delete reference profile</h2>
+      <p>Delete “<strong id="delete-reference-profile-name"></strong>” and all outputs in its folder?</p>
+      <p id="delete-reference-profile-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="delete-reference-profile-cancel" class="small-button" type="button">Cancel</button>
+        <button id="delete-reference-profile-confirm" class="danger-button" type="button">Delete</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="select-delete-profile-dialog" class="profile-dialog">
     <form id="select-delete-profile-form" class="dialog-body upload-form">
       <h2>Delete options profile</h2>
@@ -945,6 +982,21 @@
     const deleteUrlError = document.querySelector('#delete-url-error');
     const deleteUrlCancel = document.querySelector('#delete-url-cancel');
     const deleteUrlConfirm = document.querySelector('#delete-url-confirm');
+    const referenceProfileSelect = document.querySelector('#reference-profile');
+    const newReferenceProfileButton = document.querySelector('#new-reference-profile');
+    const deleteReferenceProfileButton = document.querySelector('#delete-reference-profile');
+    const newReferenceProfileDialog = document.querySelector('#new-reference-profile-dialog');
+    const newReferenceProfileForm = document.querySelector('#new-reference-profile-form');
+    const newReferenceProfileHelp = document.querySelector('#new-reference-profile-help');
+    const referenceProfileUrl = document.querySelector('#reference-profile-url');
+    const newReferenceProfileError = document.querySelector('#new-reference-profile-error');
+    const newReferenceProfileCancel = document.querySelector('#new-reference-profile-cancel');
+    const newReferenceProfileConfirm = document.querySelector('#new-reference-profile-confirm');
+    const deleteReferenceProfileDialog = document.querySelector('#delete-reference-profile-dialog');
+    const deleteReferenceProfileName = document.querySelector('#delete-reference-profile-name');
+    const deleteReferenceProfileError = document.querySelector('#delete-reference-profile-error');
+    const deleteReferenceProfileCancel = document.querySelector('#delete-reference-profile-cancel');
+    const deleteReferenceProfileConfirm = document.querySelector('#delete-reference-profile-confirm');
     const runButton = document.querySelector('#run-button');
     const statusBadge = document.querySelector('#status');
     const consoleView = document.querySelector('#console');
@@ -998,6 +1050,7 @@
     let savedProfiles = {};
     let pendingProfileDeletion = null;
     let savedUrls = {};
+    let referenceProfiles = {};
     const visibleRouteLayers = new Map();
     const selectedTestTypes = new Set();
     const selectedResultFolders = new Set();
@@ -1099,6 +1152,103 @@
         deleteUrlError.textContent = error.message;
       } finally {
         deleteUrlConfirm.disabled = false;
+      }
+    });
+
+    function updateReferenceProfileControls() {
+      const name = referenceProfileSelect.value;
+      newReferenceProfileButton.disabled = testRunRunning;
+      deleteReferenceProfileButton.disabled = testRunRunning || name === 'Initial';
+      const pending = name !== 'Initial' && referenceProfiles[name]?.status === 'pending';
+      if (!testRunRunning) {
+        runButton.textContent = pending ? 'Generate reference outputs' : 'Start test run';
+      }
+    }
+
+    function renderReferenceProfiles(data, selectedName = 'Initial') {
+      referenceProfiles = data.profiles || {};
+      referenceProfileSelect.replaceChildren();
+      for (const name of Object.keys(referenceProfiles)) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        referenceProfileSelect.append(option);
+      }
+      const initial = document.createElement('option');
+      initial.value = 'Initial';
+      initial.textContent = 'Initial';
+      referenceProfileSelect.append(initial);
+      referenceProfileSelect.value = Object.hasOwn(referenceProfiles, selectedName)
+        ? selectedName : 'Initial';
+      updateReferenceProfileControls();
+    }
+
+    async function reloadReferenceProfiles(selectedName = referenceProfileSelect.value) {
+      const data = await fetchJson('/api/reference-profiles');
+      renderReferenceProfiles(data, selectedName);
+    }
+
+    referenceProfileSelect.addEventListener('change', updateReferenceProfileControls);
+    newReferenceProfileButton.addEventListener('click', () => {
+      referenceProfileUrl.replaceChildren();
+      const names = Object.keys(savedUrls).sort((left, right) =>
+        left.localeCompare(right, undefined, {sensitivity: 'base'}));
+      for (const name of names) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        referenceProfileUrl.append(option);
+      }
+      const hasUrls = names.length > 0;
+      newReferenceProfileHelp.textContent = hasUrls
+        ? 'Select the saved URL that will generate the reference outputs.'
+        : 'You should create a saved URL first.';
+      referenceProfileUrl.closest('label').hidden = !hasUrls;
+      newReferenceProfileConfirm.disabled = !hasUrls;
+      newReferenceProfileError.textContent = '';
+      newReferenceProfileDialog.showModal();
+    });
+    newReferenceProfileCancel.addEventListener('click', () => newReferenceProfileDialog.close());
+    newReferenceProfileForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      newReferenceProfileConfirm.disabled = true;
+      newReferenceProfileError.textContent = '';
+      try {
+        const data = await fetchJson('/api/reference-profile/create', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({url_name: referenceProfileUrl.value}),
+        });
+        newReferenceProfileDialog.close();
+        renderReferenceProfiles(data, data.selected);
+      } catch (error) {
+        newReferenceProfileError.textContent = error.message;
+      } finally {
+        newReferenceProfileConfirm.disabled = false;
+      }
+    });
+    deleteReferenceProfileButton.addEventListener('click', () => {
+      if (referenceProfileSelect.value === 'Initial') return;
+      deleteReferenceProfileName.textContent = referenceProfileSelect.value;
+      deleteReferenceProfileError.textContent = '';
+      deleteReferenceProfileDialog.showModal();
+    });
+    deleteReferenceProfileCancel.addEventListener(
+      'click', () => deleteReferenceProfileDialog.close());
+    deleteReferenceProfileConfirm.addEventListener('click', async () => {
+      const name = referenceProfileSelect.value;
+      deleteReferenceProfileConfirm.disabled = true;
+      try {
+        const data = await fetchJson('/api/reference-profile/delete', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name}),
+        });
+        deleteReferenceProfileDialog.close();
+        renderReferenceProfiles(data, data.selected);
+        await loadJsonGroups();
+      } catch (error) {
+        deleteReferenceProfileError.textContent = error.message;
+      } finally {
+        deleteReferenceProfileConfirm.disabled = false;
       }
     });
 
@@ -1258,7 +1408,7 @@
     });
 
     form.addEventListener('input', event => {
-      if (event.target === savedProfileSelect) return;
+      if (event.target === savedProfileSelect || event.target === referenceProfileSelect) return;
       savedProfileSelect.selectedIndex = -1;
       updateProfileButtons();
     });
@@ -1936,6 +2086,11 @@
       } else if (status.stopped) {
         statusBadge.textContent = 'Stopped';
         statusBadge.classList.add('failed');
+      } else if (
+        status.run_mode === 'generate-reference' && status.exit_code === 0
+      ) {
+        statusBadge.textContent = 'Done';
+        statusBadge.classList.add('success');
       } else if (status.overall_status === 'PASSED') {
         statusBadge.textContent = 'PASSED';
         statusBadge.classList.add('success');
@@ -1952,9 +2107,14 @@
       runButton.classList.toggle('stop-button', status.running);
       runButton.textContent = status.stopping
         ? 'Stopping...'
-        : status.running ? 'Stop test run' : 'Start test run';
+        : status.running
+          ? status.run_mode === 'generate-reference'
+            ? 'Stop reference generation'
+            : 'Stop test run'
+          : 'Start test run';
       runButton.disabled = Boolean(status.stopping);
       updateDeleteButtons();
+      updateReferenceProfileControls();
       lastResultPath = status.result_path;
       openResultButton.disabled = !lastResultPath;
       timingView.textContent = status.running
@@ -1964,6 +2124,7 @@
         lastFinishedAt = status.finished_at;
         loadJsonGroups();
         loadRouteGroups();
+        reloadReferenceProfiles(status.reference_profile_name || 'Initial');
       }
     }
 
@@ -1976,14 +2137,19 @@
       previousProfileName = config.previous_profile;
       savedProfiles = config.profiles || {};
       savedUrls = config.saved_urls || {};
+      referenceProfiles = config.reference_profiles?.profiles || {};
       renderSavedProfiles();
       renderSavedUrls();
+      renderReferenceProfiles(config.reference_profiles || {profiles: {}}, 'Initial');
       applyOptionProfile(
         previousOptions || defaultOptions,
         previousOptions ? previousProfileName || '' : '',
       );
       if (config.profiles_error) errorView.textContent = config.profiles_error;
       if (config.urls_error) errorView.textContent = config.urls_error;
+      if (config.reference_profiles_error) {
+        errorView.textContent = config.reference_profiles_error;
+      }
     }
 
     async function pollStatus() {

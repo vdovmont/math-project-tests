@@ -43,6 +43,7 @@ TOTAL_DISTANCE_TOLERANCE_PERCENT = 0.0
 TOTAL_VALUE_TOLERANCE_PERCENT = 0.0
 JOBS_TOLERANCE_PERCENT = 0.0
 PASS_MARK = "✓"
+MAX_REFERENCE_FOLDER_NAME_LENGTH = 240
 
 # -----------------------------------------------------------------------------
 # json_http_optimizer.py
@@ -64,6 +65,7 @@ EXPECTED_FINALIZATION_SECONDS = 10.0
 DISPLAY_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 SAVED_PROFILES_FILE = SETTINGS_FOLDER / ".json_http_tester_gui_profiles.json"
 SAVED_URLS_FILE = SETTINGS_FOLDER / ".json_http_tester_gui_urls.json"
+REFERENCE_PROFILES_FILE = SETTINGS_FOLDER / ".json_http_tester_gui_reference_profiles.json"
 TEST_SELECTION_FILE = SETTINGS_FOLDER / ".json_http_tester_gui_test_selection.json"
 MAX_PROFILE_NAME_LENGTH = 80
 MAX_SAVED_PROFILES = 100

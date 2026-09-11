@@ -53,6 +53,21 @@ name appears after selecting it directly from the URL list or immediately after
 saving the current URL under that name. Selecting the blank entry restores the
 default Tester Base URL.
 
+The **Reference profile** selector controls which expected outputs a test uses.
+**Initial** is always present, appears last, and cannot be deleted. **New** opens
+a dialog for choosing a saved Base URL; when no URLs exist, the dialog explains
+that one must be saved first. A new profile starts under the URL name and changes
+the run action to **Generate reference outputs**. Generation sends every enabled
+input to that saved URL and initially estimates progress from Initial outputs.
+
+After the first output arrives, the reference folder and profile are renamed to
+`URL name-Version-YYYY.MM.DD-HH.MM.SS`. Outputs are stored in that folder under
+`Data/tests/references`; completed profiles are ordered newest first. Later test
+runs use the selected profile's output values and calculation times. Reference
+profiles persist separately in
+`Settings/.json_http_tester_gui_reference_profiles.json`. Deleting a non-Initial
+profile also deletes its complete reference folder.
+
 The **JSON files** tab groups files by the shared name before `-input.json`,
 `-output.json`, and `-test.json`. Expanding a group shows its **Input** file,
 an expandable **References** section containing the **Initial** reference, and an

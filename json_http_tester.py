@@ -16,25 +16,24 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from project_storage import JSON_DATA_FOLDER, TEST_RESULTS_FOLDER, prepare_storage
+from config import JSON_DATA_FOLDER
 
+from config import (
+    TESTER_BASE_URL as BASE_URL,
+    GETQUEUE_REQUEST,
+    START_REQUEST,
+    STATE_REQUEST,
+    STOP_REQUEST,
+    TESTS_FOLDER,
+    REQUEST_TIMEOUT_SECONDS,
+    STATE_POLL_INTERVAL_SECONDS,
+    CALCULATION_TIME_TOLERANCE_PERCENT,
+    TOTAL_DISTANCE_TOLERANCE_PERCENT,
+    TOTAL_VALUE_TOLERANCE_PERCENT,
+    JOBS_TOLERANCE_PERCENT,
+    PASS_MARK,
+)
 
-# -----------------------------------------------------------------------------
-# Configuration: edit these values before running the script.
-# -----------------------------------------------------------------------------
-BASE_URL = "http://127.0.0.1:9000"
-GETQUEUE_REQUEST = "/getqueue"
-START_REQUEST = "/start"
-STATE_REQUEST = "/state"
-STOP_REQUEST = "/stopcalculation"
-TESTS_FOLDER = TEST_RESULTS_FOLDER
-REQUEST_TIMEOUT_SECONDS = 30.0
-STATE_POLL_INTERVAL_SECONDS = 1.0
-CALCULATION_TIME_TOLERANCE_PERCENT = 0.0
-TOTAL_DISTANCE_TOLERANCE_PERCENT = 0.0
-TOTAL_VALUE_TOLERANCE_PERCENT = 0.0
-JOBS_TOLERANCE_PERCENT = 0.0
-PASS_MARK = "✓"
 
 TOLERANCE_PERCENT_DEFAULTS = {
     "calculation_time": CALCULATION_TIME_TOLERANCE_PERCENT,
@@ -592,13 +591,8 @@ def create_comparison_report(
     return report_file, comparison_failed
 
 
-def main(arguments: list[str] | None = None) -> int:
+def run(arguments: list[str] | None = None) -> int:
     args = parse_arguments(arguments)
-    try:
-        prepare_storage()
-    except OSError as error:
-        print(f"Could not prepare storage: {error}", file=sys.stderr)
-        return 1
     started_at = datetime.now()
 
     if args.timeout <= 0:
@@ -749,7 +743,3 @@ def main(arguments: list[str] | None = None) -> int:
         return 1
 
     return 1 if had_error or comparison_failed else 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

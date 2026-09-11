@@ -1,13 +1,17 @@
-"""Shared storage paths and startup preparation for both entry points."""
+"""Shared storage paths and startup preparation for the application launcher."""
 
 from pathlib import Path
 
-
-PROJECT_FOLDER = Path(__file__).resolve().parent
-DATA_FOLDER = PROJECT_FOLDER / "Data"
-SETTINGS_FOLDER = PROJECT_FOLDER / "Settings"
-JSON_DATA_FOLDER = DATA_FOLDER / "tests" / "json-data"
-TEST_RESULTS_FOLDER = DATA_FOLDER / "tests" / "test-results"
+from config import (
+    PROJECT_FOLDER,
+    DATA_FOLDER,
+    SETTINGS_FOLDER,
+    JSON_DATA_FOLDER,
+    TEST_RESULTS_FOLDER,
+    OPTIMIZER_DATA_FOLDER,
+    SAVED_PROFILES_FILE,
+    TEST_SELECTION_FILE,
+)
 
 
 def migrate_legacy_storage(root: Path) -> None:
@@ -15,12 +19,12 @@ def migrate_legacy_storage(root: Path) -> None:
     """Move legacy storage without overwriting files; safe to retry on startup."""
     root = root.resolve()
     moves = [
-        (root / "json-data", root / "Data/tests/json-data"),
-        (root / "tests", root / "Data/tests/test-results"),
-        *[(root / name, root / "Settings" / name) for name in (
-            ".json_http_tester_gui_profiles.json",
-            ".json_http_tester_gui_test_selection.json",
-        )],
+        (root / "json-data", root / JSON_DATA_FOLDER.relative_to(PROJECT_FOLDER)),
+        (root / "tests", root / TEST_RESULTS_FOLDER.relative_to(PROJECT_FOLDER)),
+        (root / ".json_http_tester_gui_profiles.json",
+         root / SAVED_PROFILES_FILE.relative_to(PROJECT_FOLDER)),
+        (root / ".json_http_tester_gui_test_selection.json",
+         root / TEST_SELECTION_FILE.relative_to(PROJECT_FOLDER)),
     ]
 
     def validate(source: Path, destination: Path) -> None:
@@ -60,6 +64,6 @@ def migrate_legacy_storage(root: Path) -> None:
 def prepare_storage(root: Path = PROJECT_FOLDER) -> None:
     """Migrate old installations and ensure permanent storage directories exist."""
     migrate_legacy_storage(root)
-    for relative in ("Data/tests/json-data", "Data/tests/test-results",
-                     "Data/optimizer", "Settings"):
-        (root / relative).mkdir(parents=True, exist_ok=True)
+    for folder in (JSON_DATA_FOLDER, TEST_RESULTS_FOLDER,
+                   OPTIMIZER_DATA_FOLDER, SETTINGS_FOLDER):
+        (root / folder.relative_to(PROJECT_FOLDER)).mkdir(parents=True, exist_ok=True)

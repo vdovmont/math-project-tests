@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MathCore JSON Tester</title>
+  <title>MathCore</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
@@ -41,14 +41,14 @@
 
     header {
       display: flex;
-      align-items: end;
-      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
       gap: 24px;
       margin-bottom: 20px;
     }
 
     h1 { margin: 0; font-size: clamp(24px, 4vw, 38px); letter-spacing: -.03em; }
-    header p { margin: 5px 0 0; color: var(--muted); }
+    header .tabs { margin: 0; padding: 0; border: 0; }
 
     .status {
       flex: 0 0 auto;
@@ -170,7 +170,7 @@
     .console-actions { display: flex; align-items: center; gap: 12px; }
     .timing { color: var(--muted); font-size: 12px; }
 
-    #console {
+    #console, #optimizer-console {
       height: 545px;
       margin: 0;
       padding: 18px;
@@ -522,10 +522,10 @@
     .upload-result-actions { margin-top: 18px; }
 
     @media (max-width: 800px) {
-      header { align-items: start; }
+      header { gap: 12px; }
       .layout { grid-template-columns: 1fr; }
       .console-panel { min-height: 480px; }
-      #console { height: 425px; }
+      #console, #optimizer-console { height: 425px; }
       .file-browser { grid-template-columns: 1fr; }
       .file-list { border-right: 0; border-bottom: 1px solid var(--border); }
       #file-content { height: 380px; }
@@ -538,13 +538,14 @@
 <body>
   <main>
     <header>
-      <div>
-        <h1>MathCore JSON Tester</h1>
-        <p>Configure, run, and follow sequential JSON tests.</p>
-      </div>
+      <h1>MathCore</h1>
+      <nav class="tabs" aria-label="Tools">
+        <button class="tab-button active" type="button" data-tool="tester" aria-pressed="true">Tester</button>
+        <button class="tab-button" type="button" data-tool="optimizer" aria-pressed="false">Optimizer</button>
+      </nav>
     </header>
-
-    <nav class="tabs" aria-label="Application sections">
+    <div id="tester-tool">
+    <nav class="tabs" aria-label="Tester sections">
       <button class="tab-button active" type="button" data-tab="runner-page">Runner</button>
       <button class="tab-button" type="button" data-tab="files-page">JSON files</button>
       <button class="tab-button" type="button" data-tab="map-page">Map</button>
@@ -652,6 +653,116 @@
         </div>
       </div>
     </section>
+    </div>
+    <div id="optimizer-tool" hidden>
+      <nav class="tabs" aria-label="Optimizer sections">
+        <button class="tab-button active" type="button" data-optimizer-tab="optimizer-runner-page">Runner</button>
+        <button class="tab-button" type="button" data-optimizer-tab="optimizer-files-page">JSON files</button>
+      </nav>
+    <section id="optimizer-runner-page" class="optimizer-page active">
+      <div class="layout">
+      <section class="panel">
+        <form id="optimizer-options-form">
+          <div class="options-heading">
+            <h2>Run options</h2>
+            <div class="profile-buttons">
+              <button id="optimizer-default-options" class="small-button" type="button" disabled>Default</button>
+              <button id="optimizer-previous-options" class="small-button" type="button" disabled>Previous</button>
+            </div>
+          </div>
+          <div class="profile-manager">
+            <select id="optimizer-saved-profile" aria-label="Saved profile">
+              <option value=""></option>
+            </select>
+            <div class="profile-buttons">
+              <button id="optimizer-save-profile" class="add-button" type="button">Save</button>
+              <button id="optimizer-delete-profile" class="danger-button" type="button" disabled>Delete</button>
+            </div>
+          </div>
+          <label>Base URL
+            <input id="optimizer-base-url" name="base_url" type="url" required>
+          </label>
+          <div class="tolerance-grid">
+            <label>Distance (%)
+              <input name="distance_percent" type="number" min="0" max="100" step="any" value="0" required>
+            </label>
+          </div>
+          <button id="optimizer-run-button" class="run-button" type="submit" disabled title="Not implemented yet">Start optimizer run</button>
+          <p class="tolerance-help">Processing is not implemented yet. Profiles can be saved now.</p>
+          <p id="optimizer-error" class="error" role="alert"></p>
+        </form>
+      </section>
+
+      <section class="panel console-panel">
+        <div class="console-header">
+          <h2>Live progress</h2>
+          <div class="console-actions">
+            <div id="optimizer-status" class="status">Idle</div>
+            <button id="optimizer-open-result" class="small-button" type="button" disabled>Open result</button>
+            <span id="optimizer-timing" class="timing"></span>
+          </div>
+        </div>
+        <pre id="optimizer-console" aria-live="polite">Optimizer processing is not implemented yet.</pre>
+      </section>
+      </div>
+    </section>
+
+  <dialog id="optimizer-save-profile-dialog" class="profile-dialog">
+    <form id="optimizer-save-profile-form" class="dialog-body upload-form">
+      <h2>Save options profile</h2>
+      <p>Enter a name for the current run options.</p>
+      <label>Profile name
+        <input id="optimizer-save-profile-name" type="text" maxlength="80" required autocomplete="off">
+      </label>
+      <p id="optimizer-save-profile-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="optimizer-save-profile-cancel" class="small-button" type="button">Cancel</button>
+        <button id="optimizer-save-profile-confirm" class="add-button" type="submit">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="optimizer-select-delete-profile-dialog" class="profile-dialog">
+    <form id="optimizer-select-delete-profile-form" class="dialog-body upload-form">
+      <h2>Delete options profile</h2>
+      <p>Select the saved profile you want to delete.</p>
+      <label>Profile
+        <select id="optimizer-delete-profile-select" required></select>
+      </label>
+      <p id="optimizer-select-delete-profile-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="optimizer-select-delete-profile-cancel" class="small-button" type="button">Cancel</button>
+        <button class="danger-button" type="submit">Continue</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="optimizer-confirm-delete-profile-dialog" class="profile-dialog">
+    <div class="dialog-body">
+      <h2>Confirm profile deletion</h2>
+      <p>Are you sure you want to delete “<strong id="optimizer-confirm-delete-profile-name"></strong>”?</p>
+      <p id="optimizer-confirm-delete-profile-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="optimizer-confirm-delete-profile-cancel" class="small-button" type="button">Cancel</button>
+        <button id="optimizer-confirm-delete-profile" class="danger-button" type="button">Delete</button>
+      </div>
+    </div>
+  </dialog>
+
+      <section id="optimizer-files-page" class="optimizer-page" hidden>
+        <section class="panel files-panel">
+          <div class="files-toolbar">
+            <h2>Input JSON files</h2>
+            <div class="console-actions">
+              <button class="add-button" type="button" disabled title="Not implemented yet">Add files</button>
+              <button class="danger-button" type="button" disabled title="Not implemented yet">Remove files</button>
+              <button class="small-button" type="button" disabled title="Not implemented yet">Refresh</button>
+            </div>
+          </div>
+          <p>File management is not implemented yet. Only <code>*-input.json</code> files will be supported.</p>
+        </section>
+      </section>
+    </div>
   </main>
 
   <dialog id="save-profile-dialog" class="profile-dialog">
@@ -798,7 +909,7 @@
     const copyFileButton = document.querySelector('#copy-file');
     const routeSelector = document.querySelector('#route-selector');
     const routesRefresh = document.querySelector('#routes-refresh');
-    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabButtons = document.querySelectorAll('#tester-tool [data-tab]');
     let logIndex = 0;
     let runId = 0;
     let polling = false;
@@ -1960,7 +2071,7 @@
     function activateTab(pageId) {
       tabButtons.forEach(button =>
         button.classList.toggle('active', button.dataset.tab === pageId));
-      document.querySelectorAll('.tab-page').forEach(page =>
+      document.querySelectorAll('#tester-tool .tab-page').forEach(page =>
         page.classList.toggle('active', page.id === pageId));
       if (pageId === 'map-page') {
         window.requestAnimationFrame(() => {
@@ -1992,6 +2103,269 @@
     }
 
     initialize();
+
+    // Optimizer profiles and controls have no access to Tester run state or logs.
+    (() => {
+    const form = document.querySelector('#optimizer-options-form');
+    const toleranceInputs = form.querySelectorAll('.tolerance-grid input');
+    const defaultOptionsButton = document.querySelector('#optimizer-default-options');
+    const previousOptionsButton = document.querySelector('#optimizer-previous-options');
+    const savedProfileSelect = document.querySelector('#optimizer-saved-profile');
+    const saveProfileButton = document.querySelector('#optimizer-save-profile');
+    const deleteProfileButton = document.querySelector('#optimizer-delete-profile');
+    const saveProfileDialog = document.querySelector('#optimizer-save-profile-dialog');
+    const saveProfileForm = document.querySelector('#optimizer-save-profile-form');
+    const saveProfileName = document.querySelector('#optimizer-save-profile-name');
+    const saveProfileError = document.querySelector('#optimizer-save-profile-error');
+    const saveProfileCancel = document.querySelector('#optimizer-save-profile-cancel');
+    const saveProfileConfirm = document.querySelector('#optimizer-save-profile-confirm');
+    const selectDeleteProfileDialog = document.querySelector('#optimizer-select-delete-profile-dialog');
+    const selectDeleteProfileForm = document.querySelector('#optimizer-select-delete-profile-form');
+    const deleteProfileSelect = document.querySelector('#optimizer-delete-profile-select');
+    const selectDeleteProfileError = document.querySelector('#optimizer-select-delete-profile-error');
+    const selectDeleteProfileCancel = document.querySelector('#optimizer-select-delete-profile-cancel');
+    const confirmDeleteProfileDialog = document.querySelector('#optimizer-confirm-delete-profile-dialog');
+    const confirmDeleteProfileName = document.querySelector('#optimizer-confirm-delete-profile-name');
+    const confirmDeleteProfileError = document.querySelector('#optimizer-confirm-delete-profile-error');
+    const confirmDeleteProfileCancel = document.querySelector('#optimizer-confirm-delete-profile-cancel');
+    const confirmDeleteProfileButton = document.querySelector('#optimizer-confirm-delete-profile');
+
+    const errorView = document.querySelector('#optimizer-error');
+    let defaultOptions = null;
+    let previousOptions = null;
+    let previousProfileName = null;
+    let savedProfiles = {};
+    let pendingProfileDeletion = null;
+    const optionFieldNames = [
+      'base_url',
+      ...Array.from(toleranceInputs, input => input.name),
+    ];
+
+    function applyOptionProfile(profile, savedProfileName = '') {
+      if (!profile) return;
+      for (const name of optionFieldNames) {
+        const input = form.elements.namedItem(name);
+        input.value = profile[name];
+      }
+      if (savedProfileName) savedProfileSelect.value = savedProfileName;
+      else savedProfileSelect.selectedIndex = -1;
+      updateProfileButtons();
+    }
+
+    function currentOptionValues() {
+      return Object.fromEntries(new FormData(form).entries());
+    }
+
+    function renderSavedProfiles(selectedName = '') {
+      const emptyOption = document.createElement('option');
+      emptyOption.value = '';
+      emptyOption.textContent = '';
+      savedProfileSelect.replaceChildren(emptyOption);
+
+      const names = Object.keys(savedProfiles).sort((left, right) =>
+        left.localeCompare(right, undefined, {sensitivity: 'base'}));
+      for (const name of names) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        savedProfileSelect.append(option);
+      }
+      if (names.includes(selectedName)) savedProfileSelect.value = selectedName;
+      else savedProfileSelect.selectedIndex = -1;
+      deleteProfileButton.disabled = names.length === 0;
+    }
+
+    function profileMatchesCurrentValues(profile) {
+      if (!profile) return false;
+      return optionFieldNames.every(name => {
+        const value = form.elements.namedItem(name).value;
+        if (name === 'base_url') return value === String(profile[name]);
+        return value !== '' && Number(value) === Number(profile[name]);
+      });
+    }
+
+    function updateProfileButtons() {
+      defaultOptionsButton.disabled = profileMatchesCurrentValues(defaultOptions);
+      previousOptionsButton.disabled =
+        !previousOptions || profileMatchesCurrentValues(previousOptions);
+      previousOptionsButton.title = previousOptions
+        ? 'Load the options used for the last optimizer run.'
+        : 'No previous optimizer-run options have been saved yet.';
+    }
+
+    function closeSaveProfileDialog() {
+      saveProfileDialog.close();
+      saveProfileForm.reset();
+      saveProfileError.textContent = '';
+    }
+
+    saveProfileButton.addEventListener('click', () => {
+      if (!form.reportValidity()) return;
+      saveProfileForm.reset();
+      saveProfileError.textContent = '';
+      saveProfileDialog.showModal();
+      window.requestAnimationFrame(() => saveProfileName.focus());
+    });
+    saveProfileCancel.addEventListener('click', closeSaveProfileDialog);
+    saveProfileDialog.addEventListener('cancel', () => {
+      saveProfileForm.reset();
+      saveProfileError.textContent = '';
+    });
+    saveProfileForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      saveProfileError.textContent = '';
+      saveProfileConfirm.disabled = true;
+      try {
+        const data = await fetchJson('/api/optimizer/profile/save', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            name: saveProfileName.value,
+            options: currentOptionValues(),
+          }),
+        });
+        savedProfiles = data.profiles;
+        closeSaveProfileDialog();
+        renderSavedProfiles(data.name);
+        applyOptionProfile(data.profile, data.name);
+      } catch (error) {
+        saveProfileError.textContent = error.message;
+      } finally {
+        saveProfileConfirm.disabled = false;
+      }
+    });
+
+    function closeSelectDeleteProfileDialog() {
+      selectDeleteProfileDialog.close();
+      selectDeleteProfileError.textContent = '';
+    }
+
+    deleteProfileButton.addEventListener('click', () => {
+      const names = Object.keys(savedProfiles).sort((left, right) =>
+        left.localeCompare(right, undefined, {sensitivity: 'base'}));
+      if (!names.length) return;
+      deleteProfileSelect.replaceChildren();
+      for (const name of names) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        deleteProfileSelect.append(option);
+      }
+      const activeName = savedProfileSelect.value;
+      deleteProfileSelect.value = names.includes(activeName) ? activeName : names[0];
+      selectDeleteProfileError.textContent = '';
+      selectDeleteProfileDialog.showModal();
+    });
+    selectDeleteProfileCancel.addEventListener(
+      'click', closeSelectDeleteProfileDialog);
+    selectDeleteProfileDialog.addEventListener('cancel', () => {
+      selectDeleteProfileError.textContent = '';
+    });
+    selectDeleteProfileForm.addEventListener('submit', event => {
+      event.preventDefault();
+      pendingProfileDeletion = deleteProfileSelect.value;
+      if (!pendingProfileDeletion) {
+        selectDeleteProfileError.textContent = 'Select a profile to delete.';
+        return;
+      }
+      closeSelectDeleteProfileDialog();
+      confirmDeleteProfileName.textContent = pendingProfileDeletion;
+      confirmDeleteProfileError.textContent = '';
+      confirmDeleteProfileDialog.showModal();
+    });
+
+    function closeConfirmDeleteProfileDialog() {
+      confirmDeleteProfileDialog.close();
+      confirmDeleteProfileError.textContent = '';
+      pendingProfileDeletion = null;
+    }
+
+    confirmDeleteProfileCancel.addEventListener(
+      'click', closeConfirmDeleteProfileDialog);
+    confirmDeleteProfileDialog.addEventListener('cancel', () => {
+      confirmDeleteProfileError.textContent = '';
+      pendingProfileDeletion = null;
+    });
+    confirmDeleteProfileButton.addEventListener('click', async () => {
+      if (!pendingProfileDeletion) return;
+      confirmDeleteProfileError.textContent = '';
+      confirmDeleteProfileButton.disabled = true;
+      try {
+        const data = await fetchJson('/api/optimizer/profile/delete', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name: pendingProfileDeletion}),
+        });
+        savedProfiles = data.profiles;
+        previousProfileName = data.previous_profile;
+        closeConfirmDeleteProfileDialog();
+        renderSavedProfiles();
+      } catch (error) {
+        confirmDeleteProfileError.textContent = error.message;
+      } finally {
+        confirmDeleteProfileButton.disabled = false;
+      }
+    });
+
+    form.addEventListener('input', event => {
+      if (event.target === savedProfileSelect) return;
+      savedProfileSelect.selectedIndex = -1;
+      updateProfileButtons();
+    });
+    defaultOptionsButton.addEventListener('click', () =>
+      applyOptionProfile(defaultOptions));
+    previousOptionsButton.addEventListener('click', () =>
+      applyOptionProfile(previousOptions, previousProfileName || ''));
+    savedProfileSelect.addEventListener('change', () => {
+      const name = savedProfileSelect.value;
+      if (name) applyOptionProfile(savedProfiles[name], name);
+      else applyOptionProfile(defaultOptions);
+    });
+
+    async function loadDefaults() {
+      const response = await fetch('/api/optimizer/config');
+      const config = await response.json();
+      if (!response.ok) throw new Error(config.error || 'Could not load run options.');
+      defaultOptions = config.default;
+      previousOptions = config.previous;
+      previousProfileName = config.previous_profile;
+      savedProfiles = config.profiles || {};
+      renderSavedProfiles();
+      applyOptionProfile(
+        previousOptions || defaultOptions,
+        previousOptions ? previousProfileName || '' : '',
+      );
+      if (config.profiles_error) errorView.textContent = config.profiles_error;
+    }
+
+
+    form.addEventListener('submit', event => event.preventDefault());
+    loadDefaults().catch(error => { errorView.textContent = error.message; });
+    })();
+
+    document.querySelectorAll('[data-tool]').forEach(button => {
+      button.addEventListener('click', () => {
+        const tool = button.dataset.tool;
+        document.querySelector('#tester-tool').hidden = tool !== 'tester';
+        document.querySelector('#optimizer-tool').hidden = tool !== 'optimizer';
+        document.querySelectorAll('[data-tool]').forEach(item => {
+          item.classList.toggle('active', item === button);
+          item.setAttribute('aria-pressed', String(item === button));
+        });
+        if (tool === 'tester' && document.querySelector('#map-page').classList.contains('active')) {
+          requestAnimationFrame(() => { if (ensureMap()) routeMap.invalidateSize(); });
+        }
+      });
+    });
+    document.querySelectorAll('[data-optimizer-tab]').forEach(button => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('.optimizer-page').forEach(page => {
+          page.hidden = page.id !== button.dataset.optimizerTab;
+        });
+        document.querySelectorAll('[data-optimizer-tab]').forEach(item =>
+          item.classList.toggle('active', item === button));
+      });
+    });
   </script>
 </body>
 </html>

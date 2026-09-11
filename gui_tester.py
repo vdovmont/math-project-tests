@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Serve a local browser interface for json_http_tester.py."""
+"""Tester tab backend: run controls, profiles, JSON files, and map data."""
 
 from __future__ import annotations
 
-import argparse
 import json
 import math
 import re
@@ -15,28 +14,30 @@ import threading
 import time
 from datetime import datetime
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 import json_http_tester as tester
-from project_storage import SETTINGS_FOLDER, prepare_storage
+
+from config import (
+    SCRIPT_FOLDER,
+    START_SCRIPT,
+    MAX_VIEW_FILE_BYTES,
+    MAX_UPLOAD_FILE_BYTES,
+    MAX_UPLOAD_FILES,
+    MAX_UPLOAD_REQUEST_BODY_BYTES,
+    DELETE_PREVIEW_TTL_SECONDS,
+    EXPECTED_FINALIZATION_SECONDS,
+    DISPLAY_DATETIME_FORMAT,
+    SAVED_PROFILES_FILE,
+    TEST_SELECTION_FILE,
+    MAX_PROFILE_NAME_LENGTH,
+    MAX_SAVED_PROFILES,
+)
 
 
-GUI_URL = "http://0.0.0.0:9010"
-SCRIPT_FOLDER = Path(__file__).resolve().parent
-TESTER_SCRIPT = SCRIPT_FOLDER / "json_http_tester.py"
-HTML_FILE = SCRIPT_FOLDER / "json_http_tester_gui.html"
-MAX_REQUEST_BODY_BYTES = 64 * 1024
-MAX_VIEW_FILE_BYTES = 20 * 1024 * 1024
-MAX_UPLOAD_FILE_BYTES = 20 * 1024 * 1024
-MAX_UPLOAD_FILES = 200
-MAX_UPLOAD_REQUEST_BODY_BYTES = (MAX_UPLOAD_FILE_BYTES * 4) + (1024 * 1024)
-DELETE_PREVIEW_TTL_SECONDS = 300
-EXPECTED_FINALIZATION_SECONDS = 10.0
-DISPLAY_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 TEST_GROUP_HEADER_PATTERN = re.compile(r"^=== (.+)-input\.json ===$")
 PROCESSING_PERCENT_PATTERN = re.compile(
     r"^Processing\s+([-+]?(?:\d+(?:\.\d*)?|\.\d+))%",
@@ -76,10 +77,6 @@ PROFILE_OPTION_NAMES = (
     "base_url",
     *(option_name for option_name, _, _, _ in TOLERANCE_FIELDS),
 )
-SAVED_PROFILES_FILE = SETTINGS_FOLDER / ".json_http_tester_gui_profiles.json"
-TEST_SELECTION_FILE = SETTINGS_FOLDER / ".json_http_tester_gui_test_selection.json"
-MAX_PROFILE_NAME_LENGTH = 80
-MAX_SAVED_PROFILES = 100
 DELETE_PREVIEWS: dict[str, dict[str, object]] = {}
 DELETE_PREVIEW_LOCK = threading.Lock()
 
@@ -277,7 +274,8 @@ class RunState:
         command = [
             sys.executable,
             "-u",
-            str(TESTER_SCRIPT),
+            str(START_SCRIPT),
+            "--tester",
             "--base-url",
             str(options["base_url"]),
             "--json-data-folder",
@@ -292,7 +290,8 @@ class RunState:
         display_command = [
             Path(sys.executable).name,
             "-u",
-            tester.display_path(TESTER_SCRIPT),
+            tester.display_path(START_SCRIPT),
+            "--tester",
             "--base-url",
             str(options["base_url"]),
             "--json-data-folder",
@@ -1585,284 +1584,156 @@ def build_route_groups() -> dict[str, object]:
     return {"groups": groups}
 
 
-class GuiRequestHandler(BaseHTTPRequestHandler):
-    server_version = "MathCoreTestGUI/1.0"
+GET_PATHS = frozenset({
+    "/api/config", "/api/files", "/api/file", "/api/routes",
+    "/api/json-files", "/api/status",
+})
+POST_PATHS = frozenset({
+    "/api/start", "/api/stop", "/api/add-test-type", "/api/test-type-enabled",
+    "/api/delete-preview", "/api/delete", "/api/profile/save", "/api/profile/delete",
+})
 
-    def log_message(self, format_string: str, *args: object) -> None:
-        # Status polling is frequent; routine access lines only obscure tester logs.
+
+def handle_get(request) -> None:
+    """Serve a Tester read request using the shared HTTP transport."""
+    parsed = urlparse(request.path)
+    if parsed.path == "/api/config":
+        profiles_error = None
+        try:
+            previous, previous_profile, profiles = load_option_profile_store()
+        except ProfileStorageError as error:
+            previous = None
+            previous_profile = None
+            profiles = {}
+            profiles_error = str(error)
+            print(profiles_error, file=sys.stderr)
+        request.send_json(
+            {
+                "default": default_option_profile(),
+                "previous": previous,
+                "previous_profile": previous_profile,
+                "profiles": profiles,
+                "profiles_error": profiles_error,
+            }
+        )
         return
 
-    def send_bytes(self, body: bytes, content_type: str, status: int = 200) -> None:
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
-
-    def send_json(self, data: object, status: int = 200) -> None:
-        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-        self.send_bytes(body, "application/json; charset=utf-8", status)
-
-    def do_GET(self) -> None:
-        parsed = urlparse(self.path)
-        if parsed.path == "/":
-            try:
-                body = HTML_FILE.read_bytes()
-            except OSError as error:
-                self.send_json({"error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR)
-                return
-            self.send_bytes(body, "text/html; charset=utf-8")
+    if parsed.path in {"/api/files", "/api/file"}:
+        query = parse_qs(parsed.query)
+        root_name = query.get("root", [""])[0]
+        relative_path = query.get("path", [""])[0]
+        try:
+            if parsed.path == "/api/files":
+                result = list_folder(root_name, relative_path)
+            else:
+                result = read_viewable_file(root_name, relative_path)
+        except ValueError as error:
+            request.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
             return
-
-        if parsed.path == "/api/config":
-            profiles_error = None
-            try:
-                previous, previous_profile, profiles = load_option_profile_store()
-            except ProfileStorageError as error:
-                previous = None
-                previous_profile = None
-                profiles = {}
-                profiles_error = str(error)
-                print(profiles_error, file=sys.stderr)
-            self.send_json(
-                {
-                    "default": default_option_profile(),
-                    "previous": previous,
-                    "previous_profile": previous_profile,
-                    "profiles": profiles,
-                    "profiles_error": profiles_error,
-                }
+        except FileNotFoundError as error:
+            request.send_json({"error": str(error)}, HTTPStatus.NOT_FOUND)
+            return
+        except OSError as error:
+            request.send_json(
+                {"error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR
             )
             return
+        request.send_json(result)
+        return
 
-        if parsed.path in {"/api/files", "/api/file"}:
-            query = parse_qs(parsed.query)
-            root_name = query.get("root", [""])[0]
-            relative_path = query.get("path", [""])[0]
-            try:
-                if parsed.path == "/api/files":
-                    result = list_folder(root_name, relative_path)
-                else:
-                    result = read_viewable_file(root_name, relative_path)
-            except ValueError as error:
-                self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
-                return
-            except FileNotFoundError as error:
-                self.send_json({"error": str(error)}, HTTPStatus.NOT_FOUND)
-                return
-            except OSError as error:
-                self.send_json(
-                    {"error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR
-                )
-                return
-            self.send_json(result)
-            return
-
-        if parsed.path == "/api/routes":
-            try:
-                result = build_route_groups()
-            except FileNotFoundError as error:
-                self.send_json({"error": str(error)}, HTTPStatus.NOT_FOUND)
-                return
-            except OSError as error:
-                self.send_json(
-                    {"error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR
-                )
-                return
-            self.send_json(result)
-            return
-
-        if parsed.path == "/api/json-files":
-            try:
-                result = build_json_file_groups()
-            except FileNotFoundError as error:
-                self.send_json({"error": str(error)}, HTTPStatus.NOT_FOUND)
-                return
-            except TestSelectionStorageError as error:
-                self.send_json(
-                    {"error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR
-                )
-                return
-            except OSError as error:
-                self.send_json(
-                    {"error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR
-                )
-                return
-            self.send_json(result)
-            return
-
-        if parsed.path == "/api/status":
-            query = parse_qs(parsed.query)
-            try:
-                after = int(query.get("after", ["0"])[0])
-            except ValueError:
-                after = 0
-            self.send_json(RUN_STATE.snapshot(after))
-            return
-
-        self.send_json({"error": "Not found."}, HTTPStatus.NOT_FOUND)
-
-    def do_POST(self) -> None:
-        request_path = urlparse(self.path).path
-        if request_path not in {
-            "/api/start",
-            "/api/stop",
-            "/api/add-test-type",
-            "/api/test-type-enabled",
-            "/api/delete-preview",
-            "/api/delete",
-            "/api/profile/save",
-            "/api/profile/delete",
-        }:
-            self.send_json({"error": "Not found."}, HTTPStatus.NOT_FOUND)
-            return
-
+    if parsed.path == "/api/routes":
         try:
-            content_length = int(self.headers.get("Content-Length", "0"))
-        except ValueError:
-            self.send_json({"error": "Invalid Content-Length."}, HTTPStatus.BAD_REQUEST)
+            result = build_route_groups()
+        except FileNotFoundError as error:
+            request.send_json({"error": str(error)}, HTTPStatus.NOT_FOUND)
             return
-        max_body_size = (
-            MAX_UPLOAD_REQUEST_BODY_BYTES
-            if request_path == "/api/add-test-type"
-            else MAX_REQUEST_BODY_BYTES
-        )
-        if content_length <= 0 or content_length > max_body_size:
-            self.send_json({"error": "Invalid request-body size."}, HTTPStatus.BAD_REQUEST)
+        except OSError as error:
+            request.send_json(
+                {"error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR
+            )
             return
+        request.send_json(result)
+        return
 
+    if parsed.path == "/api/json-files":
         try:
-            data = json.loads(self.rfile.read(content_length).decode("utf-8"))
-            if request_path == "/api/start":
-                options = validate_options(data)
-                if isinstance(data, dict) and data.get("profile_name") is not None:
-                    options["profile_name"] = validate_saved_profile_name(
-                        data.get("profile_name")
-                    )
-                previous_profile = RUN_STATE.start(options)
-                result = RUN_STATE.snapshot(0)
-                result["previous_options"] = option_profile(options)
-                result["previous_profile"] = previous_profile
-                status = HTTPStatus.ACCEPTED
-            elif request_path == "/api/stop":
-                result = RUN_STATE.stop()
-                status = HTTPStatus.OK
-            elif request_path == "/api/profile/save":
-                result = save_named_option_profile(data)
-                status = HTTPStatus.OK
-            elif request_path == "/api/profile/delete":
-                result = delete_named_option_profile(data)
-                status = HTTPStatus.OK
-            else:
-                with RUN_STATE.lock:
-                    if RUN_STATE.running:
-                        raise RuntimeError(
-                            "Wait for the current test run to finish before changing JSON files."
-                        )
-                if not isinstance(data, dict):
-                    raise ValueError("Request body must be a JSON object.")
-                if request_path == "/api/test-type-enabled":
-                    result = set_test_type_enabled(data)
-                elif request_path == "/api/add-test-type":
-                    result = add_test_types(data)
-                elif request_path == "/api/delete-preview":
-                    result = make_deletion_preview(
-                        str(data.get("mode", "")), data.get("items")
-                    )
-                else:
-                    result = {"deleted": execute_deletion(data.get("token"))}
-                    with RUN_STATE.lock:
-                        if RUN_STATE.last_result_path is not None:
-                            _, tests_root = get_file_root("tests")
-                            last_result = (
-                                tests_root / RUN_STATE.last_result_path
-                            ).resolve()
-                            if not last_result.is_file():
-                                RUN_STATE.last_result_path = None
-                status = HTTPStatus.OK
-        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
-            self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+            result = build_json_file_groups()
+        except FileNotFoundError as error:
+            request.send_json({"error": str(error)}, HTTPStatus.NOT_FOUND)
             return
-        except RuntimeError as error:
-            self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
-            return
-        except (ProfileStorageError, TestSelectionStorageError) as error:
-            self.send_json(
+        except TestSelectionStorageError as error:
+            request.send_json(
                 {"error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR
             )
             return
         except OSError as error:
-            self.send_json(
+            request.send_json(
                 {"error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR
             )
             return
+        request.send_json(result)
+        return
 
-        self.send_json(result, status)
+    if parsed.path == "/api/status":
+        query = parse_qs(parsed.query)
+        try:
+            after = int(query.get("after", ["0"])[0])
+        except ValueError:
+            after = 0
+        request.send_json(RUN_STATE.snapshot(after))
+        return
 
+    request.send_json({"error": "Not found."}, HTTPStatus.NOT_FOUND)
 
-def parse_arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--url",
-        default=GUI_URL,
-        help=f"URL on which to host the GUI (default: {GUI_URL}).",
-    )
-    return parser.parse_args()
-
-
-def parse_gui_url(url: str) -> tuple[str, int, str]:
-    parsed = urlparse(url.strip())
-    if parsed.scheme != "http" or not parsed.hostname:
-        raise ValueError("GUI URL must be a valid http:// URL.")
-    if parsed.username or parsed.password or parsed.query or parsed.fragment:
-        raise ValueError("GUI URL must not contain credentials, a query, or a fragment.")
-    if parsed.path not in {"", "/"}:
-        raise ValueError("GUI URL path must be empty or '/'.")
-
-    try:
-        port = parsed.port or 80
-    except ValueError as error:
-        raise ValueError("GUI URL contains an invalid port.") from error
-    if not 1 <= port <= 65535:
-        raise ValueError("GUI URL port must be between 1 and 65535.")
-
-    display_url = url.strip().rstrip("/") + "/"
-    return parsed.hostname, port, display_url
-
-
-def main() -> int:
-    args = parse_arguments()
-    try:
-        host, port, gui_url = parse_gui_url(args.url)
-    except ValueError as error:
-        print(f"Error: {error}", file=sys.stderr)
-        return 2
-
-    try:
-        prepare_storage()
-        create_required_folders()
-    except OSError as error:
-        print(error, file=sys.stderr)
-        return 1
-
-    try:
-        server = ThreadingHTTPServer((host, port), GuiRequestHandler)
-    except OSError as error:
-        print(f"Could not host the GUI at {gui_url}: {error}", file=sys.stderr)
-        return 1
-
-    print(f"MathCore test GUI is available at {gui_url}")
-    print("Press Ctrl+C to stop the GUI server.")
-
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\nStopping GUI server.")
-    finally:
-        server.server_close()
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+def handle_post(request_path: str, data: object) -> tuple[object, int]:
+    """Execute a Tester action; the server translates exceptions to HTTP errors."""
+    if request_path not in POST_PATHS:
+        raise ValueError("Unknown Tester action.")
+    if request_path == "/api/start":
+        options = validate_options(data)
+        if isinstance(data, dict) and data.get("profile_name") is not None:
+            options["profile_name"] = validate_saved_profile_name(
+                data.get("profile_name")
+            )
+        previous_profile = RUN_STATE.start(options)
+        result = RUN_STATE.snapshot(0)
+        result["previous_options"] = option_profile(options)
+        result["previous_profile"] = previous_profile
+        status = HTTPStatus.ACCEPTED
+    elif request_path == "/api/stop":
+        result = RUN_STATE.stop()
+        status = HTTPStatus.OK
+    elif request_path == "/api/profile/save":
+        result = save_named_option_profile(data)
+        status = HTTPStatus.OK
+    elif request_path == "/api/profile/delete":
+        result = delete_named_option_profile(data)
+        status = HTTPStatus.OK
+    else:
+        with RUN_STATE.lock:
+            if RUN_STATE.running:
+                raise RuntimeError(
+                    "Wait for the current test run to finish before changing JSON files."
+                )
+        if not isinstance(data, dict):
+            raise ValueError("Request body must be a JSON object.")
+        if request_path == "/api/test-type-enabled":
+            result = set_test_type_enabled(data)
+        elif request_path == "/api/add-test-type":
+            result = add_test_types(data)
+        elif request_path == "/api/delete-preview":
+            result = make_deletion_preview(
+                str(data.get("mode", "")), data.get("items")
+            )
+        else:
+            result = {"deleted": execute_deletion(data.get("token"))}
+            with RUN_STATE.lock:
+                if RUN_STATE.last_result_path is not None:
+                    _, tests_root = get_file_root("tests")
+                    last_result = (
+                        tests_root / RUN_STATE.last_result_path
+                    ).resolve()
+                    if not last_result.is_file():
+                        RUN_STATE.last_result_path = None
+        status = HTTPStatus.OK
+    return result, status

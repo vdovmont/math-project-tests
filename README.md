@@ -3,14 +3,30 @@
 Start the local browser interface from the script directory:
 
 ```sh
-python json_http_tester_gui.py
+python start.py
 ```
+
+Code responsibilities:
+
+- `config.py`: shared Python options, grouped by their original source module.
+- `start.py`: application startup, storage migration, HTTP transport, and routing.
+- `gui_tester.py`: Tester run controls, profiles, file management, and map data.
+- `gui_optimizer.py`: Optimizer profiles and API actions.
+- `json_http_tester.py`: MathCore requests, test execution, and comparison reports.
+- `json_http_optimizer.py`: Optimizer options and future processing logic.
+- `gui.html`: the shared browser interface for both tools.
+
+The processing modules do not start a GUI server. Use `start.py` as the entry point.
+
+Edit defaults, paths, timeouts, and limits in `config.py`, then restart the
+application. Saved GUI profiles and explicit CLI options still override their
+corresponding defaults. Tester and Optimizer have independent Base URL defaults.
 
 Storage is relative to the scripts, independent of the launch directory:
 `Data/tests/json-data` contains inputs and expected outputs,
 `Data/tests/test-results` contains run results, `Data/optimizer` is reserved for
 future use, and `Settings` contains GUI profiles and test selections.
-Both scripts automatically create these directories on startup and migrate the
+The launcher automatically creates these directories on startup and migrates the
 old root-level `json-data`, `tests`, and GUI settings files. Migration can be
 repeated safely and stops on conflicting files without overwriting either copy.
 Explicit CLI folder overrides still work and remain relative to the launch
@@ -54,7 +70,15 @@ lists added test types and reports unsupported filenames, missing or duplicate
 pair members, invalid JSON, oversized files, and existing-file conflicts.
 Uploading is disabled during a run.
 
-The page has three tabs in this order: **Runner**, **JSON files**, and **Map**.
+The page has two general tabs: **Tester** and **Optimizer**. Tester contains
+**Runner**, **JSON files**, and **Map**, with its existing testing behavior.
+Optimizer contains **Runner** and **JSON files** and remembers its selected
+sub-tab while switching tools. Its Runner has independent saved profiles,
+Base URL, and Distance (%) from 0 through 100, including decimals (default 0).
+Optimizer profiles are stored in `Settings/.json_http_optimizer_gui_profiles.json`.
+Its console is separate from Tester output. Processing is not implemented yet,
+so Start and Previous remain disabled. Add files, Remove files, and Refresh are
+also disabled for now; future uploads will accept only `*-input.json` files.
 The Runner has separate allowed-error percentages for calculation time, total
 distance, total value, and jobs. Each defaults to zero. Most metrics pass
 when its test value is no greater than the expected value plus that percentage;
@@ -116,18 +140,18 @@ so later routes continue from the preceding route's final stop number.
 The interactive map uses Leaflet and OpenStreetMap tiles, so its background map
 requires internet access.
 
-To host the GUI at another address, edit `GUI_URL` at the top of
-`json_http_tester_gui.py` or pass `--url`:
+To host the GUI at another address, edit `GUI_URL` in
+`config.py` or pass `--url`:
 
 ```sh
-python json_http_tester_gui.py --url http://127.0.0.1:9001
+python start.py --url http://127.0.0.1:9001
 ```
 
-The console tester still works without arguments and uses the configuration
-constants at the top of its file. It also accepts optional overrides:
+Run the console tester with `python start.py --tester`. It uses the configuration
+defaults in the `json_http_tester.py` section of `config.py` and accepts optional overrides:
 
 ```sh
-python scripts/json_http_tester.py --base-url http://localhost:9000 \
+python start.py --tester --base-url http://localhost:9000 \
   --json-data-folder ./Data/tests/json-data --tests-folder ./Data/tests/test-results \
   --timeout 30 --poll-interval 1 \
   --calculation-time-tolerance-percent 0 \

@@ -1,12 +1,20 @@
 ## MathCore JSON tester GUI
 
-Start the local browser interface from the directory containing `json-data` and
-`tests` (currently `scripts`):
+Start the local browser interface from the script directory:
 
 ```sh
-cd scripts
 python json_http_tester_gui.py
 ```
+
+Storage is relative to the scripts, independent of the launch directory:
+`Data/tests/json-data` contains inputs and expected outputs,
+`Data/tests/test-results` contains run results, `Data/optimizer` is reserved for
+future use, and `Settings` contains GUI profiles and test selections.
+Both scripts automatically create these directories on startup and migrate the
+old root-level `json-data`, `tests`, and GUI settings files. Migration can be
+repeated safely and stops on conflicting files without overwriting either copy.
+Explicit CLI folder overrides still work and remain relative to the launch
+directory when supplied as relative paths.
 
 By default, the server binds to `http://0.0.0.0:9010/`. It prints this address
 but does not open a browser automatically. The run form allows the MathCore base
@@ -30,7 +38,7 @@ Each test-group header has an **Enabled/Disabled** checkbox. Disabled groups sta
 visible in the file browser with muted styling but are skipped when a test run
 starts. New groups are enabled by default, and at least one group containing an
 input file must be enabled to start a run. The selections persist in
-`.json_http_tester_gui_test_selection.json` in the launch directory.
+`.json_http_tester_gui_test_selection.json` in `Settings`.
 
 All groups start collapsed. Use **Delete test type** to enter test-type selection
 mode, then select group headers to remove their input, expected-output, and
@@ -53,7 +61,7 @@ when its test value is no greater than the expected value plus that percentage;
 for example, an expected value of 100 with a 10% allowance passes through 110.
 The Base URL and percentage fields are saved only when a test run starts. Previous
 options and named profiles share `.json_http_tester_gui_profiles.json` in the
-launch directory. Previous is stored in a dedicated top-level field, separate
+`Settings` directory. Previous is stored in a dedicated top-level field, separate
 from user profile names, so a named profile called `previous` is also allowed.
 The GUI loads Previous on its next start; if none exists, it loads the hard-coded
 defaults. The **Default** and **Previous** buttons switch profiles and are disabled
@@ -120,7 +128,7 @@ constants at the top of its file. It also accepts optional overrides:
 
 ```sh
 python scripts/json_http_tester.py --base-url http://localhost:9000 \
-  --json-data-folder ./json-data --tests-folder ./tests \
+  --json-data-folder ./Data/tests/json-data --tests-folder ./Data/tests/test-results \
   --timeout 30 --poll-interval 1 \
   --calculation-time-tolerance-percent 0 \
   --total-distance-tolerance-percent 0 \

@@ -22,6 +22,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 import json_http_tester as tester
+from project_storage import SETTINGS_FOLDER, prepare_storage
 
 
 GUI_URL = "http://0.0.0.0:9010"
@@ -75,8 +76,8 @@ PROFILE_OPTION_NAMES = (
     "base_url",
     *(option_name for option_name, _, _, _ in TOLERANCE_FIELDS),
 )
-SAVED_PROFILES_FILE = Path.cwd() / ".json_http_tester_gui_profiles.json"
-TEST_SELECTION_FILE = Path.cwd() / ".json_http_tester_gui_test_selection.json"
+SAVED_PROFILES_FILE = SETTINGS_FOLDER / ".json_http_tester_gui_profiles.json"
+TEST_SELECTION_FILE = SETTINGS_FOLDER / ".json_http_tester_gui_test_selection.json"
 MAX_PROFILE_NAME_LENGTH = 80
 MAX_SAVED_PROFILES = 100
 DELETE_PREVIEWS: dict[str, dict[str, object]] = {}
@@ -1839,6 +1840,7 @@ def main() -> int:
         return 2
 
     try:
+        prepare_storage()
         create_required_folders()
     except OSError as error:
         print(error, file=sys.stderr)

@@ -1,4 +1,6 @@
 /.vscode/
+/Data/
+/Settings/
 /json-data/
 /tests/
 /__pycache__/

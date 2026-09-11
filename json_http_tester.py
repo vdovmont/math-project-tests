@@ -16,6 +16,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from project_storage import JSON_DATA_FOLDER, TEST_RESULTS_FOLDER, prepare_storage
+
 
 # -----------------------------------------------------------------------------
 # Configuration: edit these values before running the script.
@@ -25,8 +27,7 @@ GETQUEUE_REQUEST = "/getqueue"
 START_REQUEST = "/start"
 STATE_REQUEST = "/state"
 STOP_REQUEST = "/stopcalculation"
-JSON_DATA_FOLDER = Path(".") / "json-data"
-TESTS_FOLDER = Path(".") / "tests"
+TESTS_FOLDER = TEST_RESULTS_FOLDER
 REQUEST_TIMEOUT_SECONDS = 30.0
 STATE_POLL_INTERVAL_SECONDS = 1.0
 CALCULATION_TIME_TOLERANCE_PERCENT = 0.0
@@ -593,6 +594,11 @@ def create_comparison_report(
 
 def main(arguments: list[str] | None = None) -> int:
     args = parse_arguments(arguments)
+    try:
+        prepare_storage()
+    except OSError as error:
+        print(f"Could not prepare storage: {error}", file=sys.stderr)
+        return 1
     started_at = datetime.now()
 
     if args.timeout <= 0:

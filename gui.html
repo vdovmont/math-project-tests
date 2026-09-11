@@ -287,6 +287,16 @@
       font-weight: 800;
       overflow-wrap: anywhere;
     }
+    .json-file-subgroup {
+      border-top: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+    }
+    .json-file-subgroup > summary {
+      padding: 9px 14px 9px 30px;
+      color: var(--muted);
+      cursor: pointer;
+      font-weight: 750;
+    }
+    .json-file-subgroup .file-item { padding-left: 46px; }
     .test-group-summary-content {
       display: inline-flex;
       align-items: center;
@@ -1586,8 +1596,11 @@
         }
       });
       if (reveal && activeButton) {
-        const group = activeButton.closest('details');
-        if (group) group.open = true;
+        let group = activeButton.closest('details');
+        while (group) {
+          group.open = true;
+          group = group.parentElement?.closest('details') ?? null;
+        }
         activeButton.scrollIntoView({block: 'nearest'});
       }
     }
@@ -1685,7 +1698,23 @@
       meta.className = 'file-meta';
       meta.textContent = formatBytes(item.size);
       button.append(name, meta);
-      button.addEventListener('click', () => loadFile(item.root, item.path));
+      button.addEventListener('click', () => {
+        if (typeof item.content !== 'string') {
+          loadFile(item.root, item.path);
+          return;
+        }
+        resetCopyButton();
+        fileTitle.textContent = item.title || item.path;
+        fileSize.textContent = `${formatBytes(item.size)} · report snippet · read only`;
+        fileContent.classList.remove('file-error');
+        fileContent.textContent = item.content;
+        fileContent.scrollTop = 0;
+        fileContent.scrollLeft = 0;
+        loadedFileContent = item.content;
+        copyFileButton.hidden = false;
+        copyFileButton.disabled = false;
+        selectFileInList(item.root, item.path);
+      });
       return button;
     }
 
@@ -1761,6 +1790,19 @@
       });
       row.append(checkbox, makeFileButton(item));
       return row;
+    }
+
+    function makeFileSubgroup(label, files) {
+      const subgroup = document.createElement('details');
+      subgroup.className = 'json-file-subgroup';
+      const summary = document.createElement('summary');
+      summary.textContent = label;
+      subgroup.append(summary);
+      const items = document.createElement('div');
+      items.className = 'json-file-items';
+      for (const file of files) items.append(makeFileButton(file));
+      subgroup.append(items);
+      return subgroup;
     }
 
     async function loadJsonGroups() {
@@ -1865,15 +1907,11 @@
 
           const items = document.createElement('div');
           items.className = 'json-file-items';
-          const orderedFiles = [
-            ...(group.input ? [group.input] : []),
-            ...(group.output ? [group.output] : []),
-            ...group.tests,
-          ];
-
-          for (const item of orderedFiles) {
-            items.append(makeFileButton(item));
-          }
+          if (group.input) items.append(makeFileButton(group.input));
+          items.append(makeFileSubgroup('References', group.references || []));
+          items.append(makeFileSubgroup('Test results', group.test_results || []));
+          items.append(makeFileSubgroup(
+            'Test results jsons', group.test_result_jsons || []));
           details.append(items);
           fileList.append(details);
         });

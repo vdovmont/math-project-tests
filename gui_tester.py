@@ -1232,8 +1232,9 @@ def build_json_file_groups() -> dict[str, object]:
                 "name": base_name,
                 "enabled": base_name not in disabled_test_types,
                 "input": None,
-                "output": None,
-                "tests": [],
+                "references": [],
+                "test_results": [],
+                "test_result_jsons": [],
             },
         )
 
@@ -1243,12 +1244,19 @@ def build_json_file_groups() -> dict[str, object]:
             if not path_is_within(file_path, json_root):
                 continue
             base_name = file_path.name.removesuffix(suffix)
-            group_for(base_name)[item_kind] = {
+            item = {
                 "root": "json-data",
                 "path": file_path.relative_to(json_root).as_posix(),
-                "label": "Input" if item_kind == "input" else "Expected output",
+                "label": "Input" if item_kind == "input" else "Initial",
                 "size": file_path.stat().st_size,
             }
+            group = group_for(base_name)
+            if item_kind == "input":
+                group["input"] = item
+            else:
+                references = group["references"]
+                if isinstance(references, list):
+                    references.append(item)
 
     for discovered_file in tests_root.rglob("*-test.json"):
         file_path = discovered_file.resolve()
@@ -1263,9 +1271,9 @@ def build_json_file_groups() -> dict[str, object]:
             "sort_name": relative_path.parent.as_posix(),
             "size": file_path.stat().st_size,
         }
-        tests = group_for(base_name)["tests"]
-        if isinstance(tests, list):
-            tests.append(test_item)
+        test_result_jsons = group_for(base_name)["test_result_jsons"]
+        if isinstance(test_result_jsons, list):
+            test_result_jsons.append(test_item)
 
     results = []
     for discovered_file in tests_root.rglob("result.txt"):
@@ -1282,19 +1290,57 @@ def build_json_file_groups() -> dict[str, object]:
                 "size": file_path.stat().st_size,
             }
         )
+        report_lines = file_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        section_starts = {
+            line[1:-1]: index
+            for index, line in enumerate(report_lines)
+            if line.startswith("[") and line.endswith("]") and len(line) > 2
+        }
+        for base_name, start in section_starts.items():
+            group = grouped.get(base_name)
+            if group is None:
+                continue
+            end = next(
+                (
+                    index
+                    for index in range(start + 1, len(report_lines))
+                    if report_lines[index].startswith("[")
+                    and report_lines[index].endswith("]")
+                ),
+                len(report_lines),
+            )
+            snippet = "\n".join(report_lines[start:end]).strip() + "\n"
+            test_results = group["test_results"]
+            if isinstance(test_results, list):
+                folder_name = relative_path.parent.as_posix()
+                test_results.append(
+                    {
+                        "root": "result-snippet",
+                        "path": f"{folder_name}/{base_name}",
+                        "label": folder_name,
+                        "title": f"{folder_name} / {base_name}",
+                        "size": len(snippet.encode("utf-8")),
+                        "content": snippet,
+                    }
+                )
     results.sort(key=lambda item: str(item["label"]).casefold(), reverse=True)
 
     groups = []
     for base_name in sorted(grouped, key=str.casefold):
         group = grouped[base_name]
-        tests = group["tests"]
-        if isinstance(tests, list):
-            tests.sort(
+        test_result_jsons = group["test_result_jsons"]
+        if isinstance(test_result_jsons, list):
+            test_result_jsons.sort(
                 key=lambda item: str(item.get("sort_name", "")).casefold(),
                 reverse=True,
             )
-            for item in tests:
+            for item in test_result_jsons:
                 item.pop("sort_name", None)
+        test_results = group["test_results"]
+        if isinstance(test_results, list):
+            test_results.sort(
+                key=lambda item: str(item.get("label", "")).casefold(), reverse=True
+            )
         groups.append(group)
     return {"results": results, "groups": groups}
 

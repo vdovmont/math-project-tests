@@ -54,8 +54,12 @@ saving the current URL under that name. Selecting the blank entry restores the
 default Tester Base URL.
 
 The **JSON files** tab groups files by the shared name before `-input.json`,
-`-output.json`, and `-test.json`. Input and expected output appear first in each
-group; test-run files follow in descending test-folder name order.
+`-output.json`, and `-test.json`. Expanding a group shows its **Input** file,
+an expandable **References** section containing the **Initial** reference, and an
+expandable **Test results** section containing that group's snippet from each
+run's `result.txt`. Each snippet is named after its test-results folder. The fourth
+**Test results jsons** section contains the complete historical test JSONs in
+descending test-folder order.
 The same tab also has a separate **Results** group containing every `result.txt`,
 ordered by its test-run folder name descending.
 

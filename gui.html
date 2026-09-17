@@ -383,7 +383,7 @@
     .copy-file-button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
     .copy-file-button:disabled { cursor: default; opacity: .65; }
     .copy-file-button[hidden] { display: none; }
-    #file-content {
+    #file-content, #result-content {
       height: 475px;
       margin: 0;
       padding: 18px;
@@ -561,7 +561,7 @@
       #console, #optimizer-console { height: 425px; }
       .file-browser { grid-template-columns: 1fr; }
       .file-list { border-right: 0; border-bottom: 1px solid var(--border); }
-      #file-content { height: 380px; }
+      #file-content, #result-content { height: 380px; }
       .map-layout { grid-template-columns: 1fr; height: auto; }
       .route-selector { max-height: 360px; border-right: 0; border-bottom: 1px solid var(--border); }
       #route-map { height: 520px; }
@@ -581,6 +581,7 @@
     <nav class="tabs" aria-label="Tester sections">
       <button class="tab-button active" type="button" data-tab="runner-page">Runner</button>
       <button class="tab-button" type="button" data-tab="files-page">JSON files</button>
+      <button class="tab-button" type="button" data-tab="results-page">Results</button>
       <button class="tab-button" type="button" data-tab="map-page">Map</button>
     </nav>
 
@@ -684,7 +685,6 @@
           <div class="console-actions">
             <button id="add-test-type" class="add-button" type="button">Add test type</button>
             <button id="delete-test-types" class="danger-button" type="button" disabled>Delete test type</button>
-            <button id="delete-test-results" class="danger-button" type="button" disabled>Delete test results</button>
             <button id="folder-refresh" class="small-button" type="button">Refresh</button>
           </div>
         </div>
@@ -699,6 +699,31 @@
               </div>
             </div>
             <pre id="file-content">Read-only file contents appear here.</pre>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section id="results-page" class="tab-page">
+      <section class="panel files-panel">
+        <div class="files-toolbar">
+          <h2>Test results</h2>
+          <div class="console-actions">
+            <button id="delete-test-results" class="danger-button" type="button" disabled>Delete test results</button>
+            <button id="results-refresh" class="small-button" type="button">Refresh</button>
+          </div>
+        </div>
+        <div class="file-browser">
+          <div id="result-list" class="file-list"></div>
+          <div class="file-viewer">
+            <div class="file-viewer-header">
+              <span id="result-title">Select a result to view it</span>
+              <div class="file-viewer-meta">
+                <span id="result-size"></span>
+                <button id="copy-result" class="copy-file-button" type="button" hidden disabled>Copy</button>
+              </div>
+            </div>
+            <pre id="result-content">Read-only result contents appear here.</pre>
           </div>
         </div>
       </section>
@@ -1155,6 +1180,12 @@
     const fileSize = document.querySelector('#file-size');
     const fileContent = document.querySelector('#file-content');
     const copyFileButton = document.querySelector('#copy-file');
+    const resultsRefresh = document.querySelector('#results-refresh');
+    const resultList = document.querySelector('#result-list');
+    const resultTitle = document.querySelector('#result-title');
+    const resultSize = document.querySelector('#result-size');
+    const resultContent = document.querySelector('#result-content');
+    const copyResultButton = document.querySelector('#copy-result');
     const routeSelector = document.querySelector('#route-selector');
     const routesRefresh = document.querySelector('#routes-refresh');
     const tabButtons = document.querySelectorAll('#tester-tool [data-tab]');
@@ -1166,6 +1197,9 @@
     let activeFileRoot = null;
     let activeFilePath = null;
     let loadedFileContent = null;
+    let activeResultRoot = null;
+    let activeResultPath = null;
+    let loadedResultContent = null;
     let copyFeedbackTimeout = null;
     let deleteSelectionMode = null;
     let testRunRunning = false;
@@ -2149,6 +2183,91 @@
       }
     }
 
+    function selectResultInList(root, path) {
+      activeResultRoot = root;
+      activeResultPath = path;
+      let activeButton = null;
+      resultList.querySelectorAll('.file-item').forEach(button => {
+        const active =
+          button.dataset.fileRoot === root && button.dataset.filePath === path;
+        button.classList.toggle('active', active);
+        if (active) {
+          button.setAttribute('aria-current', 'true');
+          activeButton = button;
+        } else {
+          button.removeAttribute('aria-current');
+        }
+      });
+      activeButton?.scrollIntoView({block: 'nearest'});
+    }
+
+    function resetResultCopyButton() {
+      loadedResultContent = null;
+      copyResultButton.hidden = true;
+      copyResultButton.disabled = true;
+      copyResultButton.textContent = 'Copy';
+    }
+
+    async function loadResult(root, path) {
+      resetResultCopyButton();
+      const params = new URLSearchParams({root, path});
+      try {
+        const data = await fetchJson(`/api/file?${params}`);
+        resultTitle.textContent = data.path;
+        resultSize.textContent = `${formatBytes(data.size)} · read only`;
+        resultContent.classList.remove('file-error');
+        resultContent.textContent = data.content;
+        resultContent.scrollTop = 0;
+        resultContent.scrollLeft = 0;
+        loadedResultContent = data.content;
+        copyResultButton.hidden = false;
+        copyResultButton.disabled = false;
+        selectResultInList(root, path);
+      } catch (error) {
+        resultTitle.textContent = path;
+        resultSize.textContent = '';
+        resultContent.classList.add('file-error');
+        resultContent.textContent = error.message;
+      }
+    }
+
+    async function copyLoadedResult() {
+      if (loadedResultContent === null) return;
+      copyResultButton.disabled = true;
+      try {
+        await navigator.clipboard.writeText(loadedResultContent);
+        copyResultButton.textContent = 'Copied!';
+        window.setTimeout(() => { copyResultButton.textContent = 'Copy'; }, 1500);
+      } catch (error) {
+        copyResultButton.textContent = 'Copy failed';
+        window.alert(`Could not copy the result: ${error.message}`);
+      } finally {
+        copyResultButton.disabled = false;
+      }
+    }
+
+    function makeResultButton(item) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'file-item';
+      button.dataset.fileRoot = item.root;
+      button.dataset.filePath = item.path;
+      if (item.root === activeResultRoot && item.path === activeResultPath) {
+        button.classList.add('active');
+        button.setAttribute('aria-current', 'true');
+      }
+      const name = document.createElement('span');
+      name.className = 'file-name';
+      name.textContent = `📄 ${item.label}`;
+      name.title = item.path;
+      const meta = document.createElement('span');
+      meta.className = 'file-meta';
+      meta.textContent = formatBytes(item.size);
+      button.append(name, meta);
+      button.addEventListener('click', () => loadResult(item.root, item.path));
+      return button;
+    }
+
     function makeFileButton(item) {
       const button = document.createElement('button');
       button.type = 'button';
@@ -2213,19 +2332,15 @@
     function applyDeleteSelectionMode() {
       fileList.classList.toggle(
         'delete-select-types', deleteSelectionMode === 'test-types');
-      fileList.classList.toggle(
+      resultList.classList.toggle(
         'delete-select-results', deleteSelectionMode === 'test-results');
-      fileList.querySelectorAll('.json-file-group').forEach(group => {
-        group.open =
-          deleteSelectionMode === 'test-results' && group.dataset.groupKind === 'results';
-      });
     }
 
     function setDeleteSelectionMode(mode) {
       deleteSelectionMode = mode;
       selectedTestTypes.clear();
       selectedResultFolders.clear();
-      fileList.querySelectorAll('.group-select, .result-select').forEach(checkbox => {
+      document.querySelectorAll('.group-select, .result-select').forEach(checkbox => {
         checkbox.checked = false;
       });
       applyDeleteSelectionMode();
@@ -2257,7 +2372,7 @@
         else selectedResultFolders.delete(item.run_folder);
         updateDeleteButtons();
       });
-      row.append(checkbox, makeFileButton(item));
+      row.append(checkbox, makeResultButton(item));
       return row;
     }
 
@@ -2276,36 +2391,15 @@
 
     async function loadJsonGroups() {
       selectedTestTypes.clear();
-      selectedResultFolders.clear();
       updateDeleteButtons();
       fileList.innerHTML = '<div class="empty-folder">Loading...</div>';
       try {
         const data = await fetchJson('/api/json-files');
         fileList.replaceChildren();
 
-        if (!data.results.length && !data.groups.length) {
+        if (!data.groups.length) {
           fileList.innerHTML = '<div class="empty-folder">No grouped JSON files found.</div>';
           return;
-        }
-
-        if (data.results.length) {
-          const resultsGroup = document.createElement('details');
-          resultsGroup.className = 'json-file-group';
-          resultsGroup.dataset.groupKind = 'results';
-          const resultsSummary = document.createElement('summary');
-          resultsSummary.textContent = 'Results';
-          resultsGroup.append(resultsSummary);
-          const resultItems = document.createElement('div');
-          resultItems.className = 'json-file-items';
-          for (const result of data.results) resultItems.append(makeSelectableResult(result));
-          resultsGroup.append(resultItems);
-          fileList.append(resultsGroup);
-          if (data.groups.length) {
-            const separator = document.createElement('div');
-            separator.className = 'json-results-separator';
-            separator.setAttribute('aria-hidden', 'true');
-            fileList.append(separator);
-          }
         }
 
         data.groups.forEach(group => {
@@ -2397,6 +2491,30 @@
       }
     }
 
+    async function loadResults() {
+      selectedResultFolders.clear();
+      updateDeleteButtons();
+      resultList.innerHTML = '<div class="empty-folder">Loading...</div>';
+      try {
+        const data = await fetchJson('/api/json-files');
+        resultList.replaceChildren();
+        if (!data.results.length) {
+          resultList.innerHTML = '<div class="empty-folder">No test results found.</div>';
+          return;
+        }
+        for (const result of data.results) {
+          resultList.append(makeSelectableResult(result));
+        }
+        applyDeleteSelectionMode();
+      } catch (error) {
+        resultList.innerHTML = '';
+        const message = document.createElement('div');
+        message.className = 'empty-folder file-error';
+        message.textContent = error.message;
+        resultList.append(message);
+      }
+    }
+
     function setStatus(status) {
       statusBadge.className = 'status';
       if (status.stopping) {
@@ -2446,6 +2564,7 @@
       if (status.finished_at && status.finished_at !== lastFinishedAt) {
         lastFinishedAt = status.finished_at;
         loadJsonGroups();
+        loadResults();
         loadRouteGroups();
         reloadReferenceProfiles(status.reference_profile_name || 'Initial');
       }
@@ -2731,10 +2850,17 @@
         fileSize.textContent = '';
         fileContent.textContent = 'Read-only file contents appear here.';
         resetCopyButton();
+        resultTitle.textContent = 'Select a result to view it';
+        resultSize.textContent = '';
+        resultContent.textContent = 'Read-only result contents appear here.';
+        resetResultCopyButton();
         activeFileRoot = null;
         activeFilePath = null;
+        activeResultRoot = null;
+        activeResultPath = null;
         setDeleteSelectionMode(null);
         await loadJsonGroups();
+        await loadResults();
         await loadRouteGroups();
         await pollStatus();
       } catch (error) {
@@ -2745,8 +2871,10 @@
     });
 
     folderRefresh.addEventListener('click', loadJsonGroups);
+    resultsRefresh.addEventListener('click', loadResults);
     routesRefresh.addEventListener('click', loadRouteGroups);
     copyFileButton.addEventListener('click', copyLoadedFile);
+    copyResultButton.addEventListener('click', copyLoadedResult);
 
     function activateTab(pageId) {
       tabButtons.forEach(button =>
@@ -2765,9 +2893,11 @@
 
     openResultButton.addEventListener('click', async () => {
       if (!lastResultPath) return;
-      activateTab('files-page');
-      if (!findFileButton('tests', lastResultPath)) await loadJsonGroups();
-      await loadFile('tests', lastResultPath);
+      activateTab('results-page');
+      const resultExists = [...resultList.querySelectorAll('.file-item')].some(button =>
+        button.dataset.fileRoot === 'tests' && button.dataset.filePath === lastResultPath);
+      if (!resultExists) await loadResults();
+      await loadResult('tests', lastResultPath);
     });
 
     async function initialize() {
@@ -2775,6 +2905,7 @@
         await loadDefaults();
         await pollStatus();
         await loadJsonGroups();
+        await loadResults();
         await loadRouteGroups();
       } catch (error) {
         errorView.textContent = `GUI initialization failed: ${error.message}`;

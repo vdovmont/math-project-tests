@@ -91,8 +91,8 @@ expandable **Test results** section containing that group's snippet from each
 run's `result.txt`. Each snippet is named after its test-results folder. The fourth
 **Test results jsons** section contains the complete historical test JSONs in
 descending test-folder order.
-The same tab also has a separate **Results** group containing every `result.txt`,
-ordered by its test-run folder name descending.
+The separate **Results** tab lists every `result.txt` directly, ordered by its
+test-run folder name descending, with a read-only viewer on the right.
 
 Each test-group header has an **Enabled/Disabled** checkbox. Disabled groups stay
 visible in the file browser with muted styling but are skipped when a test run
@@ -100,12 +100,12 @@ starts. New groups are enabled by default, and at least one group containing an
 input file must be enabled to start a run. The selections persist in
 `.json_http_tester_gui_test_selection.json` in `Settings`.
 
-All groups start collapsed. Use **Delete test type** to enter test-type selection
-mode, then select group headers to remove their input, expected-output, and
-matching test files. Use **Delete test results** to collapse the other groups,
-open **Results**, and select complete timestamped run folders. Click the active
-delete button again to review the selection. Both actions show an exact path
-preview and require confirmation; deletion is disabled while a test run is active.
+All JSON-file groups start collapsed. Use **Delete test type** to enter test-type
+selection mode, then select group headers to remove their input, expected-output,
+and matching test files. On the **Results** tab, use **Delete test results** and
+select complete timestamped run folders. Click the active delete button again to
+review the selection. Both actions show an exact path preview and require
+confirmation; deletion is disabled while a test run is active.
 
 Use the green **Add test type** button to select multiple files in one operation.
 The GUI automatically groups matching `-input.json` and `-output.json` files by
@@ -115,7 +115,7 @@ pair members, invalid JSON, oversized files, and existing-file conflicts.
 Uploading is disabled during a run.
 
 The page has two general tabs: **Tester** and **Optimizer**. Tester contains
-**Runner**, **JSON files**, and **Map**, with its existing testing behavior.
+**Runner**, **JSON files**, **Results**, and **Map**, with its existing testing behavior.
 Optimizer contains **Runner** and **JSON files** and remembers its selected
 sub-tab while switching tools. Its Runner has independent saved profiles,
 Base URL, and Distance (%) from 0 through 100, including decimals (default 0).

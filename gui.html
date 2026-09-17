@@ -107,6 +107,23 @@
     .profile-buttons button { padding: 5px 8px; font-size: 12px; }
     .profile-manager { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; margin-bottom: 15px; }
     .profile-manager select { margin: 0; padding: 6px 8px; font-size: 12px; }
+    .generate-button {
+      padding: 4px 7px;
+      border: 1px solid #d6ad24;
+      border-radius: 8px;
+      background: #4a3b09;
+      color: #fde047;
+      font: inherit;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .generate-button:hover:not(:disabled) { background: #66510b; }
+    .generate-button:disabled {
+      border-color: var(--border);
+      background: var(--field);
+      color: var(--text);
+    }
 
     label {
       display: block;
@@ -587,6 +604,17 @@
               <button id="delete-profile" class="danger-button" type="button" disabled>Delete</button>
             </div>
           </div>
+          <p class="tolerance-title">Reference profile</p>
+          <div class="profile-manager">
+            <select id="reference-profile" name="reference_profile" aria-label="Reference profile">
+              <option value="Initial">Initial</option>
+            </select>
+            <div class="profile-buttons">
+              <button id="generate-reference" class="generate-button" type="submit" disabled>Generate</button>
+              <button id="new-reference-profile" class="add-button" type="button">New</button>
+              <button id="delete-reference-profile" class="danger-button" type="button" disabled>Delete</button>
+            </div>
+          </div>
           <p class="tolerance-title">Base URL</p>
           <label aria-label="Base URL">
             <input id="base-url" name="base_url" type="url" required>
@@ -627,16 +655,6 @@
             <label>Total time
               <input name="total_duration_tolerance_percent" type="number" min="0" step="any" required>
             </label>
-          </div>
-          <p class="tolerance-title">Reference profile</p>
-          <div class="profile-manager">
-            <select id="reference-profile" name="reference_profile" aria-label="Reference profile">
-              <option value="Initial">Initial</option>
-            </select>
-            <div class="profile-buttons">
-              <button id="new-reference-profile" class="add-button" type="button">New</button>
-              <button id="delete-reference-profile" class="danger-button" type="button" disabled>Delete</button>
-            </div>
           </div>
           <p id="error" class="error" role="alert"></p>
         </form>
@@ -1087,6 +1105,7 @@
     const deleteAllowedErrorCancel = document.querySelector('#delete-allowed-error-cancel');
     const deleteAllowedErrorConfirm = document.querySelector('#delete-allowed-error-confirm');
     const referenceProfileSelect = document.querySelector('#reference-profile');
+    const generateReferenceButton = document.querySelector('#generate-reference');
     const newReferenceProfileButton = document.querySelector('#new-reference-profile');
     const deleteReferenceProfileButton = document.querySelector('#delete-reference-profile');
     const newReferenceProfileDialog = document.querySelector('#new-reference-profile-dialog');
@@ -1303,17 +1322,22 @@
       }
     });
 
-    function updateReferenceProfileControls() {
+    function referenceProfileNeedsGeneration() {
       const name = referenceProfileSelect.value;
-      newReferenceProfileButton.disabled = testRunRunning;
-      deleteReferenceProfileButton.disabled =
-        testRunRunning || Object.keys(referenceProfiles).length === 0;
-      const pending = name !== 'Initial' && (
+      return name !== 'Initial' && (
         referenceProfiles[name]?.status === 'pending'
         || referenceProfiles[name]?.missing_outputs?.length > 0
       );
+    }
+
+    function updateReferenceProfileControls() {
+      newReferenceProfileButton.disabled = testRunRunning;
+      deleteReferenceProfileButton.disabled =
+        testRunRunning || Object.keys(referenceProfiles).length === 0;
+      const pending = referenceProfileNeedsGeneration();
+      generateReferenceButton.disabled = testRunRunning || !pending;
       if (!testRunRunning) {
-        runButton.textContent = pending ? 'Generate reference outputs' : 'Start test run';
+        runButton.disabled = pending;
       }
     }
 
@@ -2516,6 +2540,10 @@
           errorView.textContent = error.message;
           await pollStatus();
         }
+        return;
+      }
+
+      if (referenceProfileNeedsGeneration() && event.submitter !== generateReferenceButton) {
         return;
       }
 

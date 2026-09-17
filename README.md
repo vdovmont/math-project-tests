@@ -61,8 +61,9 @@ The **Reference profile** selector controls which expected outputs a test uses.
 **Initial** is always present, appears last, and cannot be deleted. **New** opens
 a dialog for choosing a saved Base URL; when no URLs exist, the dialog explains
 that one must be saved first. A new profile starts under the URL name and changes
-the run action to **Generate reference outputs**. Generation sends every enabled
-input to that saved URL and initially estimates progress from Initial outputs.
+the **Generate** button to its enabled yellow state while disabling **Start test
+run**. Generation sends every enabled input to that saved URL and initially
+estimates progress from Initial outputs.
 
 After the first output arrives, the reference folder and profile are renamed to
 `URL name-Version-YYYY.MM.DD-HH.MM.SS`. Outputs are stored in that folder under
@@ -73,9 +74,9 @@ profiles persist separately in
 profile also deletes its complete reference folder.
 
 If a group was disabled during reference generation and is enabled later, the
-selected Reference profile reports the missing output and the Runner switches to
-**Generate reference outputs**. That run sends only inputs whose enabled groups
-are missing outputs; its expected time and progress also cover only those groups.
+selected Reference profile reports the missing output, enables **Generate**, and
+disables **Start test run**. That run sends only inputs whose enabled groups are
+missing outputs; its expected time and progress also cover only those groups.
 
 Each test report identifies the comparison as `Initial (version)`, `vs`, and
 `saved URL name (version)`. A generated Reference profile already contains its

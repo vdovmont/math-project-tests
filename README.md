@@ -9,7 +9,7 @@ python start.py
 Code responsibilities:
 
 - `config.py`: shared Python options, grouped by their original source module.
-- `start.py`: application startup, storage migration, HTTP transport, and routing.
+- `start.py`: application startup, storage preparation, HTTP transport, and routing.
 - `gui_tester.py`: Tester run controls, profiles, file management, and map data.
 - `gui_optimizer.py`: Optimizer profiles and API actions.
 - `json_http_tester.py`: MathCore requests, test execution, and comparison reports.
@@ -26,9 +26,9 @@ Storage is relative to the scripts, independent of the launch directory:
 `Data/tests/references/initial` contains inputs and expected outputs,
 `Data/tests/test-results` contains run results, `Data/optimizer` is reserved for
 future use, and `Settings` contains GUI profiles and test selections.
-The launcher automatically creates these directories on startup and migrates the
-old root-level `json-data`, `Data/tests/json-data`, `tests`, and GUI settings files. Migration can be
-repeated safely and stops on conflicting files without overwriting either copy.
+The launcher automatically creates these directories on startup and renames
+existing `.json_http_tester_gui_*.json` settings files to their shorter names
+without overwriting conflicts.
 Explicit CLI folder overrides still work and remain relative to the launch
 directory when supplied as relative paths.
 
@@ -47,7 +47,7 @@ The run button is directly beside the Live progress heading.
 
 Base URLs can be saved under a separate name using the selector and Save/Delete
 buttons below the URL field. They are stored independently in
-`Settings/.json_http_tester_gui_urls.json`. The selector starts blank and returns
+`Settings/urls.json`. The selector starts blank and returns
 to blank whenever the URL is edited or changed by an options profile. A saved
 name appears after selecting it directly from the URL list or immediately after
 saving the current URL under that name. Selecting the blank entry restores the
@@ -70,7 +70,7 @@ After the first output arrives, the reference folder and profile are renamed to
 `Data/tests/references`; completed profiles are ordered newest first. Later test
 runs use the selected profile's output values and calculation times. Reference
 profiles persist separately in
-`Settings/.json_http_tester_gui_reference_profiles.json`. Deleting a non-Initial
+`Settings/reference_profiles.json`. Deleting a non-Initial
 profile also deletes its complete reference folder.
 
 If a group was disabled during reference generation and is enabled later, the
@@ -98,7 +98,7 @@ Each test-group header has an **Enabled/Disabled** checkbox. Disabled groups sta
 visible in the file browser with muted styling but are skipped when a test run
 starts. New groups are enabled by default, and at least one group containing an
 input file must be enabled to start a run. The selections persist in
-`.json_http_tester_gui_test_selection.json` in `Settings`.
+`test_selection.json` in `Settings`.
 
 All JSON-file groups start collapsed. Use **Delete test type** to enter test-type
 selection mode, then select group headers to remove their input, expected-output,
@@ -129,12 +129,12 @@ distance, total value, total time, and jobs. Total time is the sum of every
 when its test value is no greater than the expected value plus that percentage;
 for example, an expected value of 100 with a 10% allowance passes through 110.
 The Base URL and percentage fields are saved only when a test run starts. Previous
-options and named profiles share `.json_http_tester_gui_profiles.json` in the
+options and named profiles share `profiles.json` in the
 `Settings` directory. Previous is stored in a dedicated top-level field, separate
 from user profile names, so a named profile called `previous` is also allowed.
 Allowed error values can also be saved independently with the selector below the
 percentage fields. These presets are stored in
-`Settings/.json_http_tester_gui_allowed_error_profiles.json`.
+`Settings/allowed_error_profiles.json`.
 The GUI loads Previous on its next start; if none exists, it loads the hard-coded
 defaults. The **Default** and **Previous** buttons switch profiles and are disabled
 when the form already matches that profile. Unsaved edits enable both available

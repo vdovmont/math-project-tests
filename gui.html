@@ -996,6 +996,33 @@
     </div>
   </dialog>
 
+  <dialog id="reference-version-warning-dialog" class="profile-dialog">
+    <div class="dialog-body">
+      <h2>Warning</h2>
+      <p>
+        This reference profile has different output versions - meaning test results would not represent correct comparison between 2 different versions.<br>
+        It is better to create and generate a new profile with the current list of test groups.
+      </p>
+      <div class="dialog-actions">
+        <button id="reference-version-warning-ok" class="small-button" type="button">Ok</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="reference-version-run-warning-dialog" class="profile-dialog">
+    <div class="dialog-body">
+      <h2>Warning</h2>
+      <p>
+        This reference profile has different output versions - meaning test results would not represent correct comparison between 2 different versions.<br>
+        It is better to create and generate a new profile with the current list of test groups.
+      </p>
+      <div class="dialog-actions">
+        <button id="reference-version-run-abort" class="danger-button" type="button">Abort test</button>
+        <button id="reference-version-run-ok" class="add-button" type="button">Ok</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="select-delete-profile-dialog" class="profile-dialog">
     <form id="select-delete-profile-form" class="dialog-body upload-form">
       <h2>Delete options profile</h2>
@@ -1149,6 +1176,11 @@
     const deleteReferenceProfileError = document.querySelector('#delete-reference-profile-error');
     const deleteReferenceProfileCancel = document.querySelector('#delete-reference-profile-cancel');
     const deleteReferenceProfileConfirm = document.querySelector('#delete-reference-profile-confirm');
+    const referenceVersionWarningDialog = document.querySelector('#reference-version-warning-dialog');
+    const referenceVersionWarningOk = document.querySelector('#reference-version-warning-ok');
+    const referenceVersionRunWarningDialog = document.querySelector('#reference-version-run-warning-dialog');
+    const referenceVersionRunAbort = document.querySelector('#reference-version-run-abort');
+    const referenceVersionRunOk = document.querySelector('#reference-version-run-ok');
     const runButton = document.querySelector('#run-button');
     const statusBadge = document.querySelector('#status');
     const consoleView = document.querySelector('#console');
@@ -1396,6 +1428,32 @@
     async function reloadReferenceProfiles(selectedName = referenceProfileSelect.value) {
       const data = await fetchJson('/api/reference-profiles');
       renderReferenceProfiles(data, selectedName);
+      return data;
+    }
+
+    referenceVersionWarningOk.addEventListener('click', () =>
+      referenceVersionWarningDialog.close());
+
+    function confirmMismatchedReferenceRun() {
+      return new Promise(resolve => {
+        const finish = proceed => {
+          referenceVersionRunOk.removeEventListener('click', proceedRun);
+          referenceVersionRunAbort.removeEventListener('click', abortRun);
+          referenceVersionRunWarningDialog.removeEventListener('cancel', cancelRun);
+          referenceVersionRunWarningDialog.close();
+          resolve(proceed);
+        };
+        const proceedRun = () => finish(true);
+        const abortRun = () => finish(false);
+        const cancelRun = event => {
+          event.preventDefault();
+          finish(false);
+        };
+        referenceVersionRunOk.addEventListener('click', proceedRun);
+        referenceVersionRunAbort.addEventListener('click', abortRun);
+        referenceVersionRunWarningDialog.addEventListener('cancel', cancelRun);
+        referenceVersionRunWarningDialog.showModal();
+      });
     }
 
     referenceProfileSelect.addEventListener('change', () => {
@@ -2566,7 +2624,18 @@
         loadJsonGroups();
         loadResults();
         loadRouteGroups();
-        reloadReferenceProfiles(status.reference_profile_name || 'Initial');
+        const completedReferenceName = status.reference_profile_name || 'Initial';
+        reloadReferenceProfiles(completedReferenceName).then(() => {
+          const generatedReference = ['generate-reference', 'append-reference']
+            .includes(status.run_mode);
+          if (
+            generatedReference
+            && referenceProfiles[completedReferenceName]?.different_output_versions
+            && !referenceVersionWarningDialog.open
+          ) {
+            referenceVersionWarningDialog.showModal();
+          }
+        }).catch(error => { errorView.textContent = error.message; });
       }
     }
 
@@ -2663,6 +2732,14 @@
       }
 
       if (referenceProfileNeedsGeneration() && event.submitter !== generateReferenceButton) {
+        return;
+      }
+
+      if (
+        event.submitter === runButton
+        && referenceProfiles[referenceProfileSelect.value]?.different_output_versions
+        && !await confirmMismatchedReferenceRun()
+      ) {
         return;
       }
 

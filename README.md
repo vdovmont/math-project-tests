@@ -73,6 +73,13 @@ profiles persist separately in
 `Settings/reference_profiles.json`. Deleting a non-Initial
 profile also deletes its complete reference folder.
 
+Each saved reference profile records a `different_output_versions` boolean.
+After reference generation, output versions are compared with the first version
+found until a mismatch is detected or every output has been checked. A mismatch
+sets the flag permanently and displays a warning recommending a new profile for
+the current test-group selection. Starting a test with a flagged profile requires
+acknowledging that warning or aborting the test before it starts.
+
 If a group was disabled during reference generation and is enabled later, the
 selected Reference profile reports the missing output, enables **Generate**, and
 disables **Start test run**. That run sends only inputs whose enabled groups are

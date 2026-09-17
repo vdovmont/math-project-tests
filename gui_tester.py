@@ -396,6 +396,7 @@ class RunState:
             with self.lock:
                 stop_requested = self.stop_requested
                 renamed_reference_folder = self.run_folder
+            completed_reference_name = str(options["reference_profile_name"])
             if (
                 options["run_mode"] == "generate-reference"
                 and renamed_reference_folder is not None
@@ -404,10 +405,11 @@ class RunState:
             ):
                 try:
                     finalize_reference_profile(
-                        str(options["reference_profile_name"]),
+                        completed_reference_name,
                         renamed_reference_folder.name,
                         generated=exit_code == 0 and not stop_requested,
                     )
+                    completed_reference_name = renamed_reference_folder.name
                     with self.lock:
                         if self.run_options is not None:
                             self.run_options["reference_profile_name"] = (
@@ -415,6 +417,16 @@ class RunState:
                             )
                 except (OSError, ProfileStorageError) as error:
                     self._append_log(f"Could not update reference profile: {error}")
+            if (
+                options["run_mode"] in {"generate-reference", "append-reference"}
+                and not stop_requested
+            ):
+                try:
+                    update_reference_profile_version_flag(completed_reference_name)
+                except (OSError, ProfileStorageError) as error:
+                    self._append_log(
+                        f"Could not check reference output versions: {error}"
+                    )
             if report_path is not None and not stop_requested:
                 try:
                     overall_status, relative_report_path = read_result_summary(
@@ -1314,8 +1326,9 @@ def load_reference_profiles() -> dict[str, dict[str, object]]:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ProfileStorageError(f"Could not read reference profiles: {error}") from error
     try:
-        if not isinstance(payload, dict) or payload.get("version") != 1:
+        if not isinstance(payload, dict) or payload.get("version") not in {1, 2}:
             raise ValueError("reference profile file has an unsupported format")
+        needs_upgrade = payload.get("version") == 1
         raw_profiles = payload.get("profiles")
         if not isinstance(raw_profiles, dict) or len(raw_profiles) > MAX_SAVED_PROFILES:
             raise ValueError("reference profile file has an invalid profiles object")
@@ -1333,11 +1346,15 @@ def load_reference_profiles() -> dict[str, dict[str, object]]:
             folder = raw_profile.get("folder")
             status = raw_profile.get("status")
             created_at = raw_profile.get("created_at")
+            different_output_versions = raw_profile.get(
+                "different_output_versions", False
+            )
             if (
                 not isinstance(folder, str)
                 or Path(folder).name != folder
                 or status not in {"pending", "generated"}
                 or not isinstance(created_at, str)
+                or not isinstance(different_output_versions, bool)
             ):
                 raise ValueError("reference profile contains invalid metadata")
             profiles[name] = {
@@ -1346,14 +1363,22 @@ def load_reference_profiles() -> dict[str, dict[str, object]]:
                 "folder": folder,
                 "status": status,
                 "created_at": created_at,
+                "different_output_versions": different_output_versions,
             }
-        return dict(
+        profiles = dict(
             sorted(
                 profiles.items(),
                 key=lambda item: str(item[1]["created_at"]),
                 reverse=True,
             )
         )
+        if needs_upgrade:
+            write_reference_profiles(profiles)
+        return profiles
+    except OSError as error:
+        raise ProfileStorageError(
+            f"Could not upgrade reference profiles: {error}"
+        ) from error
     except ValueError as error:
         raise ProfileStorageError(f"Could not load reference profiles: {error}") from error
 
@@ -1365,7 +1390,7 @@ def write_reference_profiles(profiles: dict[str, dict[str, object]]) -> None:
     try:
         with temporary_file.open("w", encoding="utf-8", newline="") as file:
             json.dump(
-                {"version": 1, "profiles": profiles},
+                {"version": 2, "profiles": profiles},
                 file,
                 indent=2,
                 ensure_ascii=False,
@@ -1435,6 +1460,7 @@ def create_reference_profile(data: object) -> dict[str, object]:
             "folder": folder_name,
             "status": "pending",
             "created_at": datetime.now().isoformat(timespec="microseconds"),
+            "different_output_versions": False,
         }
         try:
             write_reference_profiles(profiles)
@@ -1463,6 +1489,40 @@ def finalize_reference_profile(
         profiles[new_name] = profile
         write_reference_profiles(profiles)
     rename_reference_in_option_profiles(old_name, new_name)
+
+
+def update_reference_profile_version_flag(profile_name: str) -> bool:
+    """Persist whether a reference profile contains more than one output version."""
+    with REFERENCE_PROFILE_LOCK:
+        profiles = load_reference_profiles()
+        profile = profiles.get(profile_name)
+        if profile is None:
+            raise ProfileStorageError(
+                f"Reference profile '{profile_name}' could not be found."
+            )
+        if profile["different_output_versions"]:
+            return True
+
+        folder = (JSON_DATA_ROOT / str(profile["folder"])).resolve()
+        if not path_is_within(folder, JSON_DATA_ROOT.resolve()):
+            raise ProfileStorageError("Reference profile folder is outside references.")
+        first_version = None
+        different_versions = False
+        for output_file in sorted(folder.glob("*-output.json")):
+            try:
+                output_version = tester.extract_output_version(output_file)
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+                continue
+            if first_version is None:
+                first_version = output_version
+            elif output_version != first_version:
+                different_versions = True
+                break
+
+        if different_versions:
+            profile["different_output_versions"] = True
+            write_reference_profiles(profiles)
+        return different_versions
 
 
 def delete_reference_profile(data: object) -> dict[str, object]:

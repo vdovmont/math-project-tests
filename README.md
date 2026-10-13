@@ -129,6 +129,9 @@ sub-tab while switching tools. Its Runner has independent saved profiles,
 Base URL, and Distance (%) from 0 through 100, including decimals (default 0).
 Optimizer profiles are stored in `Settings/optimizer_profiles.json`. Their saved
 Base URL selection uses the same `Settings/urls.json` entries as Tester.
+Distance is visualized as a range centered on the midpoint between depots. For
+example, 10% covers the 45%–55% portion of that distance. Values entered below
+0 or above 100 are automatically clamped to the valid range.
 Its console is separate from Tester output. Processing is not implemented yet,
 so Start and Previous remain disabled. Add files, Remove files, and Refresh are
 also disabled for now; future uploads will accept only `*-input.json` files.

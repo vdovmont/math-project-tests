@@ -151,6 +151,69 @@
     .tolerance-title { margin: 2px 0 8px; color: var(--text); font-size: 13px; font-weight: 800; }
     .tolerance-help { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
     .tolerance-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+    .distance-slider { margin: -5px 0 18px; }
+    .distance-heading { margin-bottom: 3px; }
+    .distance-range-note { margin-bottom: 4px; }
+    .distance-value-label input { margin-top: 0; }
+    .distance-slider input[type="range"] {
+      margin: 0;
+      padding: 0;
+      border: 0;
+      box-shadow: none;
+      accent-color: var(--accent);
+    }
+    .distance-visualization {
+      position: relative;
+      height: 12px;
+      margin-top: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--field);
+    }
+    .distance-band {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      z-index: 1;
+      background: color-mix(in srgb, var(--accent) 72%, transparent);
+    }
+    .distance-ticks {
+      position: absolute;
+      z-index: 2;
+      inset: 0;
+    }
+    .distance-tick {
+      position: absolute;
+      width: 2px;
+      transform: translateX(-1px);
+      background: var(--text);
+    }
+    .distance-tick.major {
+      top: 0;
+      bottom: 0;
+    }
+    .distance-midpoint {
+      position: absolute;
+      z-index: 3;
+      top: -2px;
+      bottom: -2px;
+      left: 50%;
+      width: 2px;
+      transform: translateX(-1px);
+      background: var(--text);
+    }
+    .distance-scale {
+      position: relative;
+      height: 14px;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .distance-scale span { position: absolute; transform: translateX(-50%); }
+    .distance-scale span:first-child { left: 0; transform: none; }
+    .distance-scale span:last-child { right: 0; transform: none; }
+    .distance-range-text { margin: 7px 0 0; color: var(--muted); font-size: 12px; }
 
     .run-button {
       width: 100%;
@@ -785,10 +848,26 @@
               <button id="optimizer-delete-url" class="danger-button" type="button" disabled>Delete</button>
             </div>
           </div>
+          <p class="tolerance-title distance-heading">Distance</p>
+          <p class="tolerance-help distance-range-note">Range 0%–100%</p>
           <div class="tolerance-grid">
-            <label>Distance (%)
-              <input name="distance_percent" type="number" min="0" max="100" step="any" value="0" required>
+            <label class="distance-value-label" aria-label="Distance percentage">
+              <input id="optimizer-distance-percent" name="distance_percent" type="number" min="0" max="100" step="any" value="0" required>
             </label>
+          </div>
+          <div class="distance-slider">
+            <input id="optimizer-distance-slider" type="range" min="0" max="100" step="0.1" value="0" aria-label="Distance percentage">
+            <div class="distance-visualization" aria-hidden="true">
+              <div id="optimizer-distance-band" class="distance-band"></div>
+              <div class="distance-ticks">
+                <i class="distance-tick major" style="left: 25%"></i>
+                <i class="distance-tick major" style="left: 50%"></i>
+                <i class="distance-tick major" style="left: 75%"></i>
+              </div>
+              <div class="distance-midpoint"></div>
+            </div>
+            <div class="distance-scale" aria-hidden="true"><span>0%</span><span style="left: 25%">25%</span><span style="left: 50%">50%</span><span style="left: 75%">75%</span><span>100%</span></div>
+            <p id="optimizer-distance-range-text" class="distance-range-text"></p>
           </div>
           <button id="optimizer-run-button" class="run-button" type="submit" disabled title="Not implemented yet">Start optimizer run</button>
           <p class="tolerance-help">Processing is not implemented yet. Profiles can be saved now.</p>
@@ -3087,6 +3166,10 @@
     const deleteUrlError = document.querySelector('#optimizer-delete-url-error');
     const deleteUrlCancel = document.querySelector('#optimizer-delete-url-cancel');
     const deleteUrlConfirm = document.querySelector('#optimizer-delete-url-confirm');
+    const distanceInput = document.querySelector('#optimizer-distance-percent');
+    const distanceSlider = document.querySelector('#optimizer-distance-slider');
+    const distanceBand = document.querySelector('#optimizer-distance-band');
+    const distanceRangeText = document.querySelector('#optimizer-distance-range-text');
 
     const errorView = document.querySelector('#optimizer-error');
     let defaultOptions = null;
@@ -3101,6 +3184,44 @@
       ...Array.from(toleranceInputs, input => input.name),
     ];
 
+    function formatDistancePercent(value) {
+      return Number(value.toFixed(3)).toString();
+    }
+
+    function updateDistanceVisualization(rawValue) {
+      const parsed = Number(rawValue);
+      const value = Number.isFinite(parsed) ? Math.min(100, Math.max(0, parsed)) : 0;
+      const lower = 50 - value / 2;
+      const upper = 50 + value / 2;
+      distanceSlider.value = String(value);
+      distanceBand.style.left = `${lower}%`;
+      distanceBand.style.width = `${value}%`;
+      distanceRangeText.textContent =
+        `Covers ${formatDistancePercent(lower)}%–${formatDistancePercent(upper)}% `
+        + 'of the distance between depots.';
+    }
+
+    function clampDistanceInput() {
+      if (distanceInput.value === '') return;
+      const parsed = Number(distanceInput.value);
+      if (!Number.isFinite(parsed)) return;
+      const clamped = Math.min(100, Math.max(0, parsed));
+      distanceInput.value = formatDistancePercent(clamped);
+      updateDistanceVisualization(clamped);
+    }
+
+    distanceInput.addEventListener('input', clampDistanceInput);
+    distanceInput.addEventListener('change', () => {
+      if (distanceInput.value === '') distanceInput.value = '0';
+      clampDistanceInput();
+    });
+    distanceSlider.addEventListener('input', () => {
+      distanceInput.value = formatDistancePercent(Number(distanceSlider.value));
+      updateDistanceVisualization(distanceSlider.value);
+      savedProfileSelect.selectedIndex = -1;
+      updateProfileButtons();
+    });
+
     function applyOptionProfile(profile, savedProfileName = '') {
       if (!profile) return;
       for (const name of optionFieldNames) {
@@ -3112,6 +3233,7 @@
       savedUrlSelect.value = Object.hasOwn(savedUrls, profile.saved_url_name)
         ? profile.saved_url_name : '';
       deleteUrlButton.disabled = Object.keys(savedUrls).length === 0;
+      clampDistanceInput();
       updateProfileButtons();
     }
 

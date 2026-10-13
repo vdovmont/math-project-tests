@@ -234,6 +234,17 @@
     }
 
     .run-button:hover:not(:disabled) { background: #195448; }
+    .run-button.optimizer-merge-button {
+      border-color: #d6ad24;
+      background: #4a3b09;
+      color: #fde047;
+    }
+    .run-button.optimizer-merge-button:hover:not(:disabled) { background: #66510b; }
+    .run-button.optimizer-merge-button:disabled {
+      border-color: var(--border);
+      background: var(--field);
+      color: var(--text);
+    }
     .run-button.stop-button {
       border-color: #b94454;
       background: #481d27;
@@ -897,22 +908,23 @@
             <div class="distance-scale" aria-hidden="true"><span>0%</span><span style="left: 25%">25%</span><span style="left: 50%">50%</span><span style="left: 75%">75%</span><span>100%</span></div>
             <p id="optimizer-distance-range-text" class="distance-range-text"></p>
           </div>
-          <button id="optimizer-run-button" class="run-button" type="submit" disabled title="Not implemented yet">Start optimizer run</button>
-          <p class="tolerance-help">Processing is not implemented yet. Profiles can be saved now.</p>
           <p id="optimizer-error" class="error" role="alert"></p>
         </form>
       </section>
 
       <section class="panel console-panel">
         <div class="console-header">
-          <h2>Live progress</h2>
+          <div class="console-title-actions">
+            <h2>Live progress</h2>
+            <button id="optimizer-run-button" class="run-button optimizer-merge-button" type="button" disabled>Create new group and add JSONs in it</button>
+          </div>
           <div class="console-actions">
             <div id="optimizer-status" class="status">Idle</div>
             <button id="optimizer-open-result" class="small-button" type="button" disabled>Open result</button>
             <span id="optimizer-timing" class="timing"></span>
           </div>
         </div>
-        <pre id="optimizer-console" aria-live="polite">Optimizer processing is not implemented yet.</pre>
+        <pre id="optimizer-console" aria-live="polite">Waiting for an Optimizer merge.</pre>
       </section>
       </div>
     </section>
@@ -3326,6 +3338,11 @@
     const confirmDeleteFilesError = document.querySelector('#optimizer-confirm-delete-files-error');
     const confirmDeleteFilesCancel = document.querySelector('#optimizer-confirm-delete-files-cancel');
     const confirmDeleteFilesButton = document.querySelector('#optimizer-confirm-delete-files');
+    const optimizerRunButton = document.querySelector('#optimizer-run-button');
+    const optimizerStatus = document.querySelector('#optimizer-status');
+    const optimizerOpenResult = document.querySelector('#optimizer-open-result');
+    const optimizerTiming = document.querySelector('#optimizer-timing');
+    const optimizerConsole = document.querySelector('#optimizer-console');
 
     const errorView = document.querySelector('#optimizer-error');
     let defaultOptions = null;
@@ -3339,6 +3356,7 @@
     let optimizerGroups = [];
     let selectedOptimizerGroupId = null;
     let activeOptimizerFile = null;
+    let lastOptimizerResultFile = null;
     const openOptimizerGroups = new Set();
     const openOptimizerSections = new Set();
     const optionFieldNames = [
@@ -3376,6 +3394,7 @@
       const clamped = Math.min(100, Math.max(0, parsed));
       distanceInput.value = formatDistancePercent(clamped);
       updateDistanceVisualization(clamped);
+      updateOptimizerRunButton();
     }
 
     distanceInput.addEventListener('input', clampDistanceInput);
@@ -3388,6 +3407,7 @@
       updateDistanceVisualization(distanceSlider.value);
       savedProfileSelect.selectedIndex = -1;
       updateProfileButtons();
+      updateOptimizerRunButton();
     });
 
     function applyOptionProfile(profile, savedProfileName = '') {
@@ -3676,6 +3696,36 @@
       return optimizerGroups.find(group => group.id === selectedOptimizerGroupId) || null;
     }
 
+    function updateOptimizerRunButton() {
+      const group = selectedGroup();
+      optimizerRunButton.classList.add('optimizer-merge-button');
+      if (!group) {
+        optimizerRunButton.textContent = 'Create new group and add JSONs in it';
+        optimizerRunButton.disabled = true;
+        optimizerRunButton.title = 'Select an Optimizer group first.';
+        return;
+      }
+      if (!group.initial.length) {
+        optimizerRunButton.textContent = 'Add JSONs to selected group';
+        optimizerRunButton.disabled = true;
+        optimizerRunButton.title = 'Add at least one initial JSON to the selected group.';
+        return;
+      }
+      const currentDistance = Number(distanceInput.value);
+      const mergeIsCurrent = group.merged &&
+        Number(group.merged_distance_percent) === currentDistance;
+      if (mergeIsCurrent) {
+        optimizerRunButton.classList.remove('optimizer-merge-button');
+        optimizerRunButton.textContent = 'Start optimization';
+        optimizerRunButton.disabled = true;
+        optimizerRunButton.title = 'Optimization is not implemented yet.';
+      } else {
+        optimizerRunButton.textContent = 'Start merge';
+        optimizerRunButton.disabled = false;
+        optimizerRunButton.title = 'Merge the selected group\'s initial JSON files.';
+      }
+    }
+
     function fillGroupSelect(select, preferredId = selectedOptimizerGroupId) {
       select.replaceChildren(...optimizerGroups.map(group => new Option(group.name, group.id)));
       if (optimizerGroups.some(group => group.id === preferredId)) select.value = preferredId;
@@ -3778,7 +3828,7 @@
         });
         row.append(name, toggle);
         summary.append(row);
-        const merged = group.merged ? [group.merged] : [];
+        const merged = [group.merged, group.merge_report].filter(Boolean);
         const sections = document.createElement('div');
         sections.className = 'json-file-items';
         sections.append(
@@ -3792,8 +3842,9 @@
       const hasGroups = optimizerGroups.length > 0;
       addInitialButton.disabled = !hasGroups;
       deleteFilesButton.disabled = !optimizerGroups.some(group =>
-        group.initial.length || group.merged || group.outputs.length);
+        group.initial.length || group.merged || group.merge_report || group.outputs.length);
       deleteGroupButton.disabled = !hasGroups;
+      updateOptimizerRunButton();
     }
 
     async function loadOptimizerGroups() {
@@ -3831,6 +3882,63 @@
 
     optimizerCopyFile.addEventListener('click', async () => {
       await navigator.clipboard.writeText(optimizerFileContent.textContent);
+    });
+    optimizerRunButton.addEventListener('click', async () => {
+      const group = selectedGroup();
+      if (!group || !group.initial.length || group.merged &&
+          Number(group.merged_distance_percent) === Number(distanceInput.value)) return;
+      optimizerRunButton.disabled = true;
+      optimizerStatus.className = 'status running';
+      optimizerStatus.textContent = 'Merging';
+      optimizerTiming.textContent = '';
+      optimizerConsole.textContent = `Merging ${group.initial.length} initial JSON file(s) from ${group.name}...`;
+      optimizerOpenResult.disabled = true;
+      errorView.textContent = '';
+      const started = performance.now();
+      try {
+        const data = await fetchJson('/api/optimizer/merge', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            group_id: group.id,
+            base_url: baseUrlInput.value,
+            distance_percent: distanceInput.value,
+          }),
+        });
+        optimizerGroups = data.groups;
+        selectedOptimizerGroupId = data.selected_group_id;
+        lastOptimizerResultFile = data.report_file;
+        optimizerConsole.textContent = data.report;
+        optimizerOpenResult.disabled = false;
+        if (data.merge_status === 'done') {
+          optimizerStatus.className = 'status success';
+          optimizerStatus.textContent = data.warning_count
+            ? `Done (${data.warning_count} warnings)` : 'Done';
+        } else {
+          optimizerStatus.className = 'status failed';
+          optimizerStatus.textContent = `Failed (${data.error_count})`;
+        }
+        renderOptimizerGroups();
+      } catch (error) {
+        optimizerStatus.className = 'status failed';
+        optimizerStatus.textContent = 'Failed';
+        optimizerConsole.textContent = `Merge failed\n\n${error.message}`;
+        errorView.textContent = error.message;
+        updateOptimizerRunButton();
+      } finally {
+        optimizerTiming.textContent = `${((performance.now() - started) / 1000).toFixed(2)}s`;
+      }
+    });
+    optimizerOpenResult.addEventListener('click', async () => {
+      if (!lastOptimizerResultFile) return;
+      openOptimizerGroups.add(lastOptimizerResultFile.group_id);
+      openOptimizerSections.add(`${lastOptimizerResultFile.group_id}:merged`);
+      document.querySelector('[data-optimizer-tab="optimizer-files-page"]').click();
+      renderOptimizerGroups();
+      await loadOptimizerFile(
+        lastOptimizerResultFile.group_id,
+        lastOptimizerResultFile.category,
+        lastOptimizerResultFile.path,
+      );
     });
     refreshFilesButton.addEventListener('click', () => {
       openOptimizerGroups.clear();
@@ -3921,6 +4029,7 @@
       const entries = [
         ...group.initial.map(file => ({...file, category: 'initial', label: `Initial / ${file.path}`})),
         ...(group.merged ? [{...group.merged, category: 'merged', label: `Merged input / ${group.merged.path}`}] : []),
+        ...(group.merge_report ? [{...group.merge_report, category: 'merged', label: `Merged input / ${group.merge_report.path}`}] : []),
         ...group.outputs.map(file => ({...file, category: 'outputs', label: `Output / ${file.path}`})),
       ];
       for (const file of entries) {

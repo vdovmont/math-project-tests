@@ -213,6 +213,21 @@ def optimizer_groups() -> dict[str, object]:
                 {"name": merged_file.name, "path": merged_file.name, "size": merged_file.stat().st_size}
                 if merged_file.is_file() else None
             )
+            merge_report_file = folder / "merged" / "merge-report.txt"
+            merge_report = (
+                {"name": merge_report_file.name, "path": merge_report_file.name,
+                 "size": merge_report_file.stat().st_size}
+                if merge_report_file.is_file() else None
+            )
+            merged_distance_percent = None
+            if merged:
+                try:
+                    merged_payload = json.loads(merged_file.read_text(encoding="utf-8"))
+                    merged_distance_percent = merged_payload.get("options", {}).get(
+                        "optimize_jobs_between_depots_distance"
+                    )
+                except (OSError, UnicodeError, json.JSONDecodeError, AttributeError):
+                    pass
             outputs = sorted(
                 (
                     {
@@ -225,7 +240,14 @@ def optimizer_groups() -> dict[str, object]:
                 ),
                 key=lambda item: item["path"].casefold(),
             )
-            groups.append({**manifest, "initial": initial, "merged": merged, "outputs": outputs})
+            groups.append({
+                **manifest,
+                "initial": initial,
+                "merged": merged,
+                "merge_report": merge_report,
+                "merged_distance_percent": merged_distance_percent,
+                "outputs": outputs,
+            })
     groups.sort(key=lambda item: (item["name"].casefold(), item["id"]))
     selected = load_group_selection()
     ids = {str(group["id"]) for group in groups}
@@ -296,6 +318,9 @@ def add_initial_files(data: object) -> dict[str, object]:
         prepared.append((folder / name, content))
     for path, content in prepared:
         path.write_text(content, encoding="utf-8")
+    merged_folder = folder.parent / "merged"
+    (merged_folder / "merged-input.json").unlink(missing_ok=True)
+    (merged_folder / "merge-report.txt").unlink(missing_ok=True)
     return optimizer_groups()
 
 
@@ -335,23 +360,91 @@ def safe_category_file(group_id: object, category: object, relative_path: object
         raise ValueError("Select an Optimizer JSON file.")
     root = category_root(group_folder(group_id), category).resolve()
     file = (root / relative_path).resolve()
-    if not file.is_relative_to(root) or not file.is_file() or file.suffix.lower() != ".json":
-        raise ValueError("Optimizer JSON file does not exist.")
+    if (
+        not file.is_relative_to(root)
+        or not file.is_file()
+        or file.suffix.lower() not in {".json", ".txt"}
+    ):
+        raise ValueError("Optimizer result file does not exist.")
     return file
+
+
+def merge_group(data: object) -> dict[str, object]:
+    if not isinstance(data, dict):
+        raise ValueError("Request body must be a JSON object.")
+    distance = optimizer.validate_options({
+        "base_url": data.get("base_url"),
+        "distance_percent": data.get("distance_percent"),
+    })["distance_percent"]
+    with GROUP_LOCK:
+        folder = group_folder(data.get("group_id"))
+        initial_files = sorted(
+            (file for file in (folder / "initial").glob("*-input.json") if file.is_file()),
+            key=lambda file: file.name.casefold(),
+        )
+        merged_folder = folder / "merged"
+        merged_file = merged_folder / "merged-input.json"
+        report_file = merged_folder / "merge-report.txt"
+        merged_file.unlink(missing_ok=True)
+        documents = []
+        try:
+            for file in initial_files:
+                document = json.loads(file.read_text(encoding="utf-8"))
+                if not isinstance(document, dict):
+                    raise ValueError(f"'{file.name}' must contain a JSON object.")
+                documents.append((file.name, document))
+            merged, report, warning_count, error_count = optimizer.merge_inputs(
+                documents, distance
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+            merged = None
+            warning_count = 0
+            error_count = 1
+            report = f"Optimizer input merge report\n\nMerge failed\n\n{error}\n"
+
+        report_file.write_text(report, encoding="utf-8")
+        if merged is not None:
+            temporary = merged_file.with_suffix(".json.tmp")
+            try:
+                temporary.write_text(
+                    json.dumps(merged, indent=2, ensure_ascii=False) + "\n",
+                    encoding="utf-8",
+                )
+                temporary.replace(merged_file)
+            finally:
+                temporary.unlink(missing_ok=True)
+        return {
+            **optimizer_groups(),
+            "merge_status": "done" if merged is not None else "failed",
+            "warning_count": warning_count,
+            "error_count": error_count,
+            "report": report,
+            "report_file": {
+                "group_id": folder.name,
+                "category": "merged",
+                "path": report_file.name,
+            },
+        }
 
 
 def delete_files(data: object) -> dict[str, object]:
     if not isinstance(data, dict) or not isinstance(data.get("files"), list) or not data["files"]:
         raise ValueError("Select one or more files to delete.")
     files = []
+    deleted_initial = False
     for item in data["files"]:
         if not isinstance(item, dict):
             raise ValueError("Invalid file selection.")
         files.append(safe_category_file(
             data.get("group_id"), item.get("category"), item.get("path")
         ))
+        deleted_initial = deleted_initial or item.get("category") == "initial"
     for file in files:
         file.unlink()
+    if deleted_initial:
+        merged_folder = group_folder(data.get("group_id")) / "merged"
+        (merged_folder / "merged-input.json").unlink(missing_ok=True)
+        (merged_folder / "merge-report.txt").unlink(missing_ok=True)
     return optimizer_groups()
 
 
@@ -360,7 +453,7 @@ POST_PATHS = frozenset({
     "/api/optimizer/profile/save", "/api/optimizer/profile/delete",
     "/api/optimizer/group/create", "/api/optimizer/group/select",
     "/api/optimizer/group/delete", "/api/optimizer/files/add",
-    "/api/optimizer/files/delete",
+    "/api/optimizer/files/delete", "/api/optimizer/merge",
 })
 
 
@@ -380,9 +473,10 @@ def handle_get(request) -> None:
             if file.stat().st_size > MAX_VIEW_FILE_BYTES:
                 raise ValueError("File is too large to display.")
             content = file.read_text(encoding="utf-8")
+            if file.suffix.lower() == ".json":
+                content = json.dumps(json.loads(content), indent=2, ensure_ascii=False)
             request.send_json({"name": file.name, "size": file.stat().st_size,
-                               "content": json.dumps(json.loads(content), indent=2,
-                                                     ensure_ascii=False)})
+                               "content": content})
         except (ValueError, UnicodeError) as error:
             request.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
 
@@ -398,5 +492,6 @@ def handle_post(request_path: str, data: object) -> tuple[object, int]:
         "/api/optimizer/group/delete": delete_group,
         "/api/optimizer/files/add": add_initial_files,
         "/api/optimizer/files/delete": delete_files,
+        "/api/optimizer/merge": merge_group,
     }
     return actions[request_path](data), HTTPStatus.OK

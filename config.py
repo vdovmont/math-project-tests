@@ -52,6 +52,19 @@ MAX_REFERENCE_FOLDER_NAME_LENGTH = 240
 # -----------------------------------------------------------------------------
 OPTIMIZER_BASE_URL = "http://127.0.0.1:9000"
 DISTANCE_PERCENT = 0.0
+# Dot-separated paths are supported. "options.*" compares every direct option.
+OPTIMIZER_MERGE_EQUAL_FIELDS = (
+    "company",
+    "dynamic_servicetime",
+    "ignore_depot_return_time",
+    "router_url",
+    "options.*",
+)
+# These arrays are concatenated in this order. Duplicate IDs are fatal only for
+# fields listed as fatal. IDs are renamed only for fields in the rename list.
+OPTIMIZER_MERGE_LIST_FIELDS = ("depotList", "jobList", "points", "trList")
+OPTIMIZER_MERGE_FATAL_DUPLICATE_FIELDS = ("jobList",)
+OPTIMIZER_MERGE_RENAME_DUPLICATE_FIELDS = ("depotList", "trList")
 
 # -----------------------------------------------------------------------------
 # gui_tester.py

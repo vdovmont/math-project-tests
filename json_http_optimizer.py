@@ -3,6 +3,7 @@
 import copy
 import json
 import math
+import re
 import time
 from collections import defaultdict
 from urllib.parse import urlencode, urlparse
@@ -24,10 +25,33 @@ from config import (
 
 
 MISSING = object()
+JOBS_TAKEN_PATTERN = re.compile(
+    r"\b(\d+)\s*/\s*(\d+)\s+jobs\s+taken\b", re.IGNORECASE
+)
 
 
 class OptimizationStopped(Exception):
     pass
+
+
+def find_jobs_taken(data: object) -> tuple[int, int] | None:
+    """Return the first taken/total jobs value found in a response comment."""
+    if isinstance(data, dict):
+        comment = data.get("comment")
+        if isinstance(comment, str):
+            match = JOBS_TAKEN_PATTERN.search(comment)
+            if match is not None:
+                return int(match.group(1)), int(match.group(2))
+        children = data.values()
+    elif isinstance(data, list):
+        children = data
+    else:
+        return None
+    for child in children:
+        counts = find_jobs_taken(child)
+        if counts is not None:
+            return counts
+    return None
 
 
 def build_url(base_url, request_path):
@@ -342,6 +366,12 @@ def merge_inputs(documents, distance_percent):
             merged_entries.append(entry)
         merged[field] = merged_entries
 
+    empty_list_warnings = [
+        f"Field '{field}' is empty; expect no jobs to be completed."
+        for field in OPTIMIZER_MERGE_LIST_FIELDS
+        if not collected[field]
+    ]
+
     options = merged.get("options")
     if options is None:
         options = {}
@@ -356,10 +386,19 @@ def merge_inputs(documents, distance_percent):
         "Merge completed",
         "",
         f"Input files: {len(documents)}",
-        f"Warnings: {len(warnings)}",
+        f"Warnings: {len(warnings) + len(empty_list_warnings)}",
     ])
+    if empty_list_warnings:
+        report.extend(["", "Empty-list warnings:"])
+        report.extend(f"  {warning}" for warning in empty_list_warnings)
     if warnings:
-        report.extend(["", "Warnings:", *(f"  {warning}" for warning in warnings)])
-    return merged, "\n".join(report) + "\n", len(warnings), 0
+        if empty_list_warnings:
+            report.append("")
+        else:
+            report.append("")
+        report.append("Warnings:")
+        report.extend(f"  {warning}" for warning in warnings)
+    warning_count = len(warnings) + len(empty_list_warnings)
+    return merged, "\n".join(report) + "\n", warning_count, 0
 
 

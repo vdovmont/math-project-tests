@@ -3446,6 +3446,7 @@
     let loadedOptimizerFileContent = null;
     let optimizerCopyFeedbackTimeout = null;
     let lastOptimizerResultFile = null;
+    let lastOptimizerResultHasZeroJobs = false;
     let optimizerRunRunning = false;
     let optimizerRunStopping = false;
     let optimizerStatusPolling = false;
@@ -3894,9 +3895,16 @@
         if (!optimizerRunRunning && selectedOptimizerGroupId === requestedGroupId) {
           const reportLines = data.content.replace(/\r\n/g, '\n').split('\n');
           const warningsIndex = reportLines.findIndex(line => line.trim() === 'Warnings:');
+          const emptyWarningsIndex = reportLines.findIndex(
+            line => line.trim() === 'Empty-list warnings:',
+          );
+          const warningSectionIndexes = [warningsIndex, emptyWarningsIndex]
+            .filter(index => index >= 0);
+          const firstWarningIndex = warningSectionIndexes.length
+            ? Math.min(...warningSectionIndexes) : -1;
           let detailLines;
-          if (warningsIndex >= 0) {
-            detailLines = reportLines.slice(warningsIndex);
+          if (firstWarningIndex >= 0) {
+            detailLines = reportLines.slice(firstWarningIndex);
           } else {
             const failedIndex = reportLines.findIndex(line => line.trim() === 'Merge failed');
             detailLines = reportLines.slice(failedIndex >= 0 ? failedIndex + 1 : 0);
@@ -4150,6 +4158,7 @@
         optimizerRunButton.disabled = true;
         optimizerOpenResult.disabled = true;
         lastOptimizerResultFile = null;
+        lastOptimizerResultHasZeroJobs = false;
         errorView.textContent = '';
         try {
           const status = await fetchJson('/api/optimizer/start', {
@@ -4199,6 +4208,7 @@
           ? `New merge blocked until the group inputs change. Fix the errors below before starting another merge.\n\n${data.report}`
           : data.report;
         lastOptimizerResultFile = null;
+        lastOptimizerResultHasZeroJobs = false;
         optimizerOpenResult.disabled = true;
         if (data.merge_status === 'done') {
           optimizerStatus.className = data.warning_count
@@ -4228,6 +4238,17 @@
           });
         }
         await loadOptimizerGroups();
+        if (lastOptimizerResultHasZeroJobs) {
+          openOptimizerGroups.add(lastOptimizerResultFile.group_id);
+          openOptimizerSections.add(`${lastOptimizerResultFile.group_id}:outputs`);
+          document.querySelector('[data-optimizer-tab="optimizer-files-page"]').click();
+          await loadOptimizerFile(
+            lastOptimizerResultFile.group_id,
+            'outputs',
+            lastOptimizerResultFile.path,
+          );
+          return;
+        }
         syncOptimizerMapOutputs();
         if ([...optimizerMapOutput.options].some(option =>
           option.value === lastOptimizerResultFile.path)) {
@@ -4256,9 +4277,15 @@
       optimizerRunStopping = Boolean(status.stopping);
       const elapsed = formatOptimizerElapsed(status.elapsed_time_seconds);
       const logText = (status.logs || []).join('\n');
-      optimizerConsole.textContent = `${logText}${logText ? '\n\n' : ''}Time passed: ${elapsed}\n`;
+      const zeroJobsNotice = status.zero_jobs_result
+        ? `RESULT HAS 0 JOBS TAKEN (0/${status.jobs_total ?? 0}).`
+        : '';
+      optimizerConsole.textContent = zeroJobsNotice
+        ? `${logText}${logText ? '\n\n' : ''}${zeroJobsNotice}\n\nTime passed: ${elapsed}\n`
+        : `${logText}${logText ? '\n\n' : ''}Time passed: ${elapsed}\n`;
       if (status.result_file) {
         lastOptimizerResultFile = status.result_file;
+        lastOptimizerResultHasZeroJobs = Boolean(status.zero_jobs_result);
         optimizerOpenResult.disabled = false;
       }
       if (status.stopping) {

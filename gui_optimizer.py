@@ -40,6 +40,8 @@ class OptimizerRunState:
         self.elapsed_time_seconds = 0.0
         self.exit_code: int | None = None
         self.result_file: dict[str, str] | None = None
+        self.jobs_taken: int | None = None
+        self.jobs_total: int | None = None
         self.active_query: int | None = None
         self.run_id = 0
         self.progress_active = False
@@ -86,6 +88,8 @@ class OptimizerRunState:
             self.elapsed_time_seconds = 0.0
             self.exit_code = None
             self.result_file = None
+            self.jobs_taken = None
+            self.jobs_total = None
             self.active_query = None
             self.progress_active = False
             self.base_url = str(options["base_url"])
@@ -122,6 +126,7 @@ class OptimizerRunState:
                 on_progress=lambda line: self.append_log(line, progress=True),
                 should_stop=self.stop_event.is_set,
             )
+            jobs_taken = optimizer.find_jobs_taken(output)
             outputs = folder / "outputs"
             outputs.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -145,6 +150,8 @@ class OptimizerRunState:
                     "category": "outputs",
                     "path": output_file.name,
                 }
+                if jobs_taken is not None:
+                    self.jobs_taken, self.jobs_total = jobs_taken
             exit_code = 0
         except optimizer.OptimizationStopped:
             exit_code = -1
@@ -203,6 +210,9 @@ class OptimizerRunState:
                 "elapsed_time_seconds": elapsed,
                 "exit_code": self.exit_code,
                 "result_file": self.result_file,
+                "jobs_taken": self.jobs_taken,
+                "jobs_total": self.jobs_total,
+                "zero_jobs_result": self.jobs_taken == 0,
                 "active_query": self.active_query,
                 "run_id": self.run_id,
                 "stopping": self.stopping,

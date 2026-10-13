@@ -4446,10 +4446,16 @@
         .some(([key, enabled]) => key !== '__changed__' && enabled !== false);
       for (const [key, mapItem] of optimizerMapLayers) {
         let visible;
-        if (key.startsWith('__changed__:')) {
-          const depotId = key.slice('__changed__:'.length);
+        if (mapItem.kind === 'job' && mapItem.changed) {
+          const relatedDepotSelected = mapItem.depotIds.some(
+            depotId => optimizerMapToggleStates.get(depotId) !== false,
+          );
           visible = optimizerMapToggleStates.get('__changed__') !== false
-            && (!anyDepotSelected || optimizerMapToggleStates.get(depotId) !== false);
+            && (!anyDepotSelected || relatedDepotSelected);
+        } else if (mapItem.kind === 'job') {
+          visible = mapItem.depotIds.some(
+            depotId => optimizerMapToggleStates.get(depotId) !== false,
+          );
         } else {
           visible = optimizerMapToggleStates.get(key) !== false;
         }
@@ -4594,7 +4600,10 @@
       optimizerMapMessage.textContent = data.jobs.length
         ? '' : 'No handled jobs with map coordinates were found.';
       optimizerMapMessage.classList.remove('file-error');
-      const depotIds = [...new Set(data.jobs.map(job => job.original_depot))];
+      const depotIds = [...new Set(data.jobs.flatMap(job => [
+        job.original_depot,
+        job.output_depot,
+      ]))];
       const colorDepotIds = [...new Set([
         ...data.depots.map(depot => depot.id),
         ...data.jobs.map(job => job.original_depot),
@@ -4612,17 +4621,8 @@
 
       for (const depotId of depotIds) {
         optimizerMapLayers.set(String(depotId), {
-          layer: L.layerGroup(), coordinates: [],
+          kind: 'depot', layer: L.layerGroup(), coordinates: [],
         });
-      }
-      if (data.changed_count) {
-        for (const depotId of new Set(
-          data.jobs.filter(job => job.changed).map(job => job.original_depot)
-        )) {
-          optimizerMapLayers.set(`__changed__:${depotId}`, {
-            layer: L.layerGroup(), coordinates: [],
-          });
-        }
       }
       addOptimizerDepotHues(data.depots, Number(data.distance_percent) || 0);
       for (const depot of data.depots) {
@@ -4642,11 +4642,19 @@
           .bindPopup(popup).addTo(mapItem.layer);
         mapItem.coordinates.push([depot.lat, depot.lon]);
       }
-      for (const job of data.jobs) {
-        const layerKey = job.changed
-          ? `__changed__:${job.original_depot}` : String(job.original_depot);
-        const mapItem = optimizerMapLayers.get(layerKey);
-        if (!mapItem) continue;
+      data.jobs.forEach((job, index) => {
+        const layerKey = `__job__:${index}`;
+        const mapItem = {
+          kind: 'job',
+          changed: job.changed,
+          depotIds: [...new Set([
+            String(job.original_depot),
+            String(job.output_depot),
+          ])],
+          layer: L.layerGroup(),
+          coordinates: [],
+        };
+        optimizerMapLayers.set(layerKey, mapItem);
         const color = job.changed ? '#dc2626' : optimizerDepotColor(job.original_depot);
         const markerBody = document.createElement('span');
         markerBody.className = 'optimizer-job-marker';
@@ -4666,7 +4674,7 @@
         L.marker([job.lat, job.lon], {icon})
           .bindPopup(optimizerMapPopup(job)).addTo(mapItem.layer);
         mapItem.coordinates.push([job.lat, job.lon]);
-      }
+      });
       for (const depotId of depotIds) {
         addOptimizerLegend(
           String(depotId), optimizerDepotColor(depotId), `Depot ${depotId}`,

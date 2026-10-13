@@ -972,7 +972,6 @@
           <div class="console-actions">
             <div id="optimizer-status" class="status">Idle</div>
             <button id="optimizer-open-result" class="small-button" type="button" disabled>Open result</button>
-            <span id="optimizer-timing" class="timing"></span>
           </div>
         </div>
         <pre id="optimizer-console" aria-live="polite">Waiting for an Optimizer merge.</pre>
@@ -3415,7 +3414,6 @@
     const optimizerRunButton = document.querySelector('#optimizer-run-button');
     const optimizerStatus = document.querySelector('#optimizer-status');
     const optimizerOpenResult = document.querySelector('#optimizer-open-result');
-    const optimizerTiming = document.querySelector('#optimizer-timing');
     const optimizerConsole = document.querySelector('#optimizer-console');
     const optimizerMapOutput = document.querySelector('#optimizer-map-output');
     const optimizerMapHeading = document.querySelector('#optimizer-map-heading');
@@ -4091,11 +4089,9 @@
       optimizerRunButton.disabled = true;
       optimizerStatus.className = 'status running';
       optimizerStatus.textContent = 'Merging';
-      optimizerTiming.textContent = '';
       optimizerConsole.textContent = `Merging ${group.initial.length} initial JSON file(s) from ${group.name}...`;
       optimizerOpenResult.disabled = true;
       errorView.textContent = '';
-      const started = performance.now();
       try {
         const data = await fetchJson('/api/optimizer/merge', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -4107,9 +4103,9 @@
         });
         optimizerGroups = data.groups;
         selectedOptimizerGroupId = data.selected_group_id;
-        lastOptimizerResultFile = data.report_file;
         optimizerConsole.textContent = data.report;
-        optimizerOpenResult.disabled = false;
+        lastOptimizerResultFile = null;
+        optimizerOpenResult.disabled = true;
         if (data.merge_status === 'done') {
           optimizerStatus.className = 'status success';
           optimizerStatus.textContent = data.warning_count
@@ -4125,23 +4121,27 @@
         optimizerConsole.textContent = `Merge failed\n\n${error.message}`;
         errorView.textContent = error.message;
         updateOptimizerRunButton();
-      } finally {
-        optimizerTiming.textContent = `${((performance.now() - started) / 1000).toFixed(2)}s`;
       }
     });
     optimizerOpenResult.addEventListener('click', async () => {
-      if (!lastOptimizerResultFile) return;
-      openOptimizerGroups.add(lastOptimizerResultFile.group_id);
-      openOptimizerSections.add(
-        `${lastOptimizerResultFile.group_id}:${lastOptimizerResultFile.category}`
-      );
-      document.querySelector('[data-optimizer-tab="optimizer-files-page"]').click();
-      renderOptimizerGroups();
-      await loadOptimizerFile(
-        lastOptimizerResultFile.group_id,
-        lastOptimizerResultFile.category,
-        lastOptimizerResultFile.path,
-      );
+      if (!lastOptimizerResultFile || lastOptimizerResultFile.category !== 'outputs') return;
+      try {
+        if (selectedOptimizerGroupId !== lastOptimizerResultFile.group_id) {
+          await fetchJson('/api/optimizer/group/select', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({group_id: lastOptimizerResultFile.group_id}),
+          });
+        }
+        await loadOptimizerGroups();
+        syncOptimizerMapOutputs();
+        if ([...optimizerMapOutput.options].some(option =>
+          option.value === lastOptimizerResultFile.path)) {
+          optimizerMapOutput.value = lastOptimizerResultFile.path;
+        }
+        document.querySelector('[data-optimizer-tab="optimizer-map-page"]').click();
+      } catch (error) {
+        errorView.textContent = error.message;
+      }
     });
 
     function formatOptimizerElapsed(seconds) {
@@ -4160,7 +4160,6 @@
       optimizerRunRunning = Boolean(status.running);
       optimizerRunStopping = Boolean(status.stopping);
       const elapsed = formatOptimizerElapsed(status.elapsed_time_seconds);
-      optimizerTiming.textContent = `Time passed: ${elapsed}`;
       const logText = (status.logs || []).join('\n');
       optimizerConsole.textContent = `${logText}${logText ? '\n\n' : ''}Time passed: ${elapsed}\n`;
       if (status.result_file) {

@@ -1102,6 +1102,9 @@
           </div>
           <div class="map-layout">
             <div class="route-selector optimizer-map-controls">
+              <label>JSON group
+                <select id="optimizer-map-group"></select>
+              </label>
               <label>Output JSON
                 <select id="optimizer-map-output"></select>
               </label>
@@ -3417,6 +3420,7 @@
     const optimizerStatus = document.querySelector('#optimizer-status');
     const optimizerOpenResult = document.querySelector('#optimizer-open-result');
     const optimizerConsole = document.querySelector('#optimizer-console');
+    const optimizerMapGroup = document.querySelector('#optimizer-map-group');
     const optimizerMapOutput = document.querySelector('#optimizer-map-output');
     const optimizerMapHeading = document.querySelector('#optimizer-map-heading');
     const optimizerMapSummary = document.querySelector('#optimizer-map-summary');
@@ -3436,6 +3440,7 @@
     let pendingOptimizerFilesDeletion = null;
     let optimizerGroups = [];
     let selectedOptimizerGroupId = null;
+    let optimizerMapGroupId = null;
     let activeOptimizerFile = null;
     let loadedOptimizerFileContent = null;
     let optimizerCopyFeedbackTimeout = null;
@@ -3786,6 +3791,10 @@
 
     function selectedGroup() {
       return optimizerGroups.find(group => group.id === selectedOptimizerGroupId) || null;
+    }
+
+    function selectedOptimizerMapGroup() {
+      return optimizerGroups.find(group => group.id === optimizerMapGroupId) || null;
     }
 
     function updateOptimizerRunButton() {
@@ -4246,16 +4255,24 @@
       optimizerMapLegend.replaceChildren();
     }
 
-    function syncOptimizerMapOutputs() {
+    function syncOptimizerMapOutputs({selectLatest = false} = {}) {
       const previous = optimizerMapOutput.value;
-      const group = selectedGroup();
-      const outputs = group?.outputs || [];
+      if (!optimizerGroups.some(group => group.id === optimizerMapGroupId)) {
+        optimizerMapGroupId = optimizerGroups.some(group => group.id === selectedOptimizerGroupId)
+          ? selectedOptimizerGroupId : (optimizerGroups[0]?.id || null);
+      }
+      optimizerMapGroup.replaceChildren(...optimizerGroups.map(group =>
+        new Option(group.name, group.id)));
+      if (optimizerMapGroupId) optimizerMapGroup.value = optimizerMapGroupId;
+      optimizerMapGroup.disabled = !optimizerGroups.length;
+      const group = selectedOptimizerMapGroup();
+      const outputs = [...(group?.outputs || [])].reverse();
       optimizerMapOutput.replaceChildren(...outputs.map(file =>
         new Option(file.path, file.path)));
-      if (outputs.some(file => file.path === previous)) {
+      if (!selectLatest && outputs.some(file => file.path === previous)) {
         optimizerMapOutput.value = previous;
       } else if (outputs.length) {
-        optimizerMapOutput.value = outputs[outputs.length - 1].path;
+        optimizerMapOutput.value = outputs[0].path;
       }
       optimizerMapOutput.disabled = !outputs.length;
       optimizerMapHeading.textContent = group
@@ -4530,7 +4547,7 @@
     }
 
     async function loadOptimizerMap() {
-      const group = selectedGroup();
+      const group = selectedOptimizerMapGroup();
       const output = optimizerMapOutput.value;
       clearOptimizerMap();
       if (!group || !output) {
@@ -4551,6 +4568,11 @@
       }
     }
 
+    optimizerMapGroup.addEventListener('change', () => {
+      optimizerMapGroupId = optimizerMapGroup.value || null;
+      syncOptimizerMapOutputs({selectLatest: true});
+      loadOptimizerMap();
+    });
     optimizerMapOutput.addEventListener('change', loadOptimizerMap);
     optimizerMapRefresh.addEventListener('click', async () => {
       await loadOptimizerGroups();
@@ -4558,6 +4580,8 @@
     });
     document.querySelector('[data-optimizer-tab="optimizer-map-page"]')
       .addEventListener('click', () => {
+        optimizerMapGroupId = selectedOptimizerGroupId;
+        syncOptimizerMapOutputs({selectLatest: true});
         window.requestAnimationFrame(() => {
           if (ensureOptimizerMap()) optimizerMap.invalidateSize();
           loadOptimizerMap();

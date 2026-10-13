@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 import gui_tester
 import gui_optimizer
 from project_storage import PROJECT_FOLDER, prepare_storage
+from settings_storage import UrlStorageError
 
 from config import (
     GUI_URL,
@@ -83,7 +84,7 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
             self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
             return
         except (gui_tester.ProfileStorageError, gui_tester.TestSelectionStorageError,
-                gui_tester.UrlStorageError,
+                UrlStorageError,
                 OSError) as error:
             self.send_json({"error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return

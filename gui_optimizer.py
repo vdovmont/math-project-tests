@@ -5,7 +5,7 @@ import threading
 from http import HTTPStatus
 
 import json_http_optimizer as optimizer
-import gui_tester
+from settings_storage import UrlStorageError, load_saved_urls
 
 from config import (
     PROFILE_FILE,
@@ -64,8 +64,8 @@ def validate_profile_options(options):
 def config():
     urls_error = None
     try:
-        saved_urls = gui_tester.load_saved_urls()
-    except gui_tester.UrlStorageError as error:
+        saved_urls = load_saved_urls()
+    except UrlStorageError as error:
         saved_urls = {}
         urls_error = str(error)
     return {

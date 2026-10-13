@@ -12,6 +12,7 @@ Code responsibilities:
 - `start.py`: application startup, storage preparation, HTTP transport, and routing.
 - `gui_tester.py`: Tester run controls, profiles, file management, and map data.
 - `gui_optimizer.py`: Optimizer profiles and API actions.
+- `settings_storage.py`: shared Base URL settings persistence.
 - `json_http_tester.py`: MathCore requests, test execution, and comparison reports.
 - `json_http_optimizer.py`: Optimizer options and future processing logic.
 - `gui.html`: the shared browser interface for both tools.

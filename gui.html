@@ -1031,7 +1031,7 @@
                 <span id="optimizer-file-title">Select a JSON file</span>
                 <span class="file-viewer-meta">
                   <span id="optimizer-file-size"></span>
-                  <button id="optimizer-copy-file" class="copy-file-button" type="button" disabled>Copy</button>
+                  <button id="optimizer-copy-file" class="copy-file-button" type="button" hidden disabled>Copy</button>
                 </span>
               </div>
               <pre id="optimizer-file-content" class="file-content">No file selected.</pre>
@@ -3356,6 +3356,8 @@
     let optimizerGroups = [];
     let selectedOptimizerGroupId = null;
     let activeOptimizerFile = null;
+    let loadedOptimizerFileContent = null;
+    let optimizerCopyFeedbackTimeout = null;
     let lastOptimizerResultFile = null;
     const openOptimizerGroups = new Set();
     const openOptimizerSections = new Set();
@@ -3859,13 +3861,28 @@
 
     function clearOptimizerFile() {
       activeOptimizerFile = null;
+      loadedOptimizerFileContent = null;
       optimizerFileTitle.textContent = 'Select a JSON file';
       optimizerFileSize.textContent = '';
       optimizerFileContent.textContent = 'No file selected.';
+      optimizerCopyFile.hidden = true;
       optimizerCopyFile.disabled = true;
+      optimizerCopyFile.textContent = 'Copy';
+      if (optimizerCopyFeedbackTimeout !== null) {
+        window.clearTimeout(optimizerCopyFeedbackTimeout);
+        optimizerCopyFeedbackTimeout = null;
+      }
     }
 
     async function loadOptimizerFile(groupId, category, path) {
+      loadedOptimizerFileContent = null;
+      optimizerCopyFile.hidden = true;
+      optimizerCopyFile.disabled = true;
+      optimizerCopyFile.textContent = 'Copy';
+      if (optimizerCopyFeedbackTimeout !== null) {
+        window.clearTimeout(optimizerCopyFeedbackTimeout);
+        optimizerCopyFeedbackTimeout = null;
+      }
       try {
         const query = new URLSearchParams({group: groupId, category, path});
         const data = await fetchJson(`/api/optimizer/file?${query}`);
@@ -3873,6 +3890,8 @@
         optimizerFileTitle.textContent = data.name;
         optimizerFileSize.textContent = `${formatBytes(data.size)} · read only`;
         optimizerFileContent.textContent = data.content;
+        loadedOptimizerFileContent = data.content;
+        optimizerCopyFile.hidden = false;
         optimizerCopyFile.disabled = false;
         renderOptimizerGroups();
       } catch (error) {
@@ -3881,7 +3900,39 @@
     }
 
     optimizerCopyFile.addEventListener('click', async () => {
-      await navigator.clipboard.writeText(optimizerFileContent.textContent);
+      if (loadedOptimizerFileContent === null) return;
+      const contentToCopy = loadedOptimizerFileContent;
+      optimizerCopyFile.disabled = true;
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(contentToCopy);
+        } else {
+          const copyArea = document.createElement('textarea');
+          copyArea.value = contentToCopy;
+          copyArea.setAttribute('readonly', '');
+          copyArea.style.position = 'fixed';
+          copyArea.style.opacity = '0';
+          document.body.append(copyArea);
+          try {
+            copyArea.select();
+            if (!document.execCommand('copy')) {
+              throw new Error('The browser rejected the copy command.');
+            }
+          } finally {
+            copyArea.remove();
+          }
+        }
+        optimizerCopyFile.textContent = 'Copied!';
+        optimizerCopyFeedbackTimeout = window.setTimeout(() => {
+          optimizerCopyFile.textContent = 'Copy';
+          optimizerCopyFeedbackTimeout = null;
+        }, 1500);
+      } catch (error) {
+        optimizerCopyFile.textContent = 'Copy failed';
+        window.alert(`Could not copy the file: ${error.message}`);
+      } finally {
+        optimizerCopyFile.disabled = false;
+      }
     });
     optimizerRunButton.addEventListener('click', async () => {
       const group = selectedGroup();

@@ -4870,6 +4870,7 @@
 
     form.addEventListener('submit', event => event.preventDefault());
     Promise.all([loadDefaults(), loadOptimizerGroups(), pollOptimizerStatus()])
+      .then(() => showSelectedOptimizerMergeReport())
       .catch(error => { errorView.textContent = error.message; });
     window.setInterval(pollOptimizerStatus, 500);
     })();

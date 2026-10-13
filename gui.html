@@ -3440,6 +3440,7 @@
     let optimizerCopyFeedbackTimeout = null;
     let lastOptimizerResultFile = null;
     let optimizerRunRunning = false;
+    let optimizerRunStopping = false;
     let optimizerStatusPolling = false;
     let completedOptimizerRunId = 0;
     let optimizerStatusMode = 'idle';
@@ -3788,12 +3789,17 @@
 
     function updateOptimizerRunButton() {
       const group = selectedGroup();
+      optimizerRunButton.classList.remove('stop-button');
       optimizerRunButton.classList.add('optimizer-merge-button');
       if (optimizerRunRunning) {
         optimizerRunButton.classList.remove('optimizer-merge-button');
-        optimizerRunButton.textContent = 'Optimization running';
-        optimizerRunButton.disabled = true;
-        optimizerRunButton.title = 'The selected merged input is being processed.';
+        optimizerRunButton.classList.add('stop-button');
+        optimizerRunButton.textContent = optimizerRunStopping
+          ? 'Stopping...' : 'Stop optimization';
+        optimizerRunButton.disabled = optimizerRunStopping;
+        optimizerRunButton.title = optimizerRunStopping
+          ? 'Waiting for the Optimizer run to stop.'
+          : 'Stop the active MathCore optimization query.';
         return;
       }
       if (!group) {
@@ -4031,8 +4037,21 @@
       }
     });
     optimizerRunButton.addEventListener('click', async () => {
+      if (optimizerRunRunning) {
+        optimizerRunButton.disabled = true;
+        errorView.textContent = '';
+        try {
+          applyOptimizerStatus(await fetchJson('/api/optimizer/stop', {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}',
+          }));
+        } catch (error) {
+          errorView.textContent = error.message;
+          await pollOptimizerStatus();
+        }
+        return;
+      }
       const group = selectedGroup();
-      if (!group || !group.initial.length || optimizerRunRunning) return;
+      if (!group || !group.initial.length) return;
       const mergeIsCurrent = group.merged &&
         Number(group.merged_distance_percent) === Number(distanceInput.value);
       if (mergeIsCurrent) {
@@ -4139,6 +4158,7 @@
       if (status.run_id === 0 || optimizerStatusMode === 'merge' && !status.running) return;
       optimizerStatusMode = 'optimization';
       optimizerRunRunning = Boolean(status.running);
+      optimizerRunStopping = Boolean(status.stopping);
       const elapsed = formatOptimizerElapsed(status.elapsed_time_seconds);
       optimizerTiming.textContent = `Time passed: ${elapsed}`;
       const logText = (status.logs || []).join('\n');
@@ -4147,9 +4167,15 @@
         lastOptimizerResultFile = status.result_file;
         optimizerOpenResult.disabled = false;
       }
-      if (status.running) {
+      if (status.stopping) {
+        optimizerStatus.className = 'status running';
+        optimizerStatus.textContent = 'Stopping';
+      } else if (status.running) {
         optimizerStatus.className = 'status running';
         optimizerStatus.textContent = 'Running';
+      } else if (status.stopped) {
+        optimizerStatus.className = 'status failed';
+        optimizerStatus.textContent = 'Stopped';
       } else if (status.exit_code === 0) {
         optimizerStatus.className = 'status success';
         optimizerStatus.textContent = 'Done';

@@ -42,6 +42,11 @@ class OptimizerRunState:
         self.active_query: int | None = None
         self.run_id = 0
         self.progress_active = False
+        self.base_url: str | None = None
+        self.stopping = False
+        self.stopped = False
+        self.stop_requested = False
+        self.stop_event = threading.Event()
 
     def append_log(self, line: str, *, progress: bool = False) -> None:
         with self.lock:
@@ -82,6 +87,11 @@ class OptimizerRunState:
             self.result_file = None
             self.active_query = None
             self.progress_active = False
+            self.base_url = str(options["base_url"])
+            self.stopping = False
+            self.stopped = False
+            self.stop_requested = False
+            self.stop_event.clear()
             self.run_id += 1
         threading.Thread(
             target=self._run,
@@ -109,6 +119,7 @@ class OptimizerRunState:
                 base_url,
                 on_query=on_query,
                 on_progress=lambda line: self.append_log(line, progress=True),
+                should_stop=self.stop_event.is_set,
             )
             outputs = folder / "outputs"
             outputs.mkdir(parents=True, exist_ok=True)
@@ -126,8 +137,15 @@ class OptimizerRunState:
                     "path": output_file.name,
                 }
             exit_code = 0
+        except optimizer.OptimizationStopped:
+            exit_code = -1
+            self.append_log("Optimization stopped.")
         except Exception as error:
-            self.append_log(f"Optimization failed: {error}")
+            if self.stop_event.is_set():
+                exit_code = -1
+                self.append_log("Optimization stopped.")
+            else:
+                self.append_log(f"Optimization failed: {error}")
         finally:
             with self.lock:
                 if self.started_monotonic is not None:
@@ -136,6 +154,34 @@ class OptimizerRunState:
                 self.exit_code = exit_code
                 self.active_query = None
                 self.progress_active = False
+                self.stopping = False
+                self.stopped = self.stop_requested
+
+    def stop(self) -> dict[str, object]:
+        with self.lock:
+            if not self.running:
+                raise RuntimeError("No Optimizer run is currently running.")
+            if self.stopping:
+                raise RuntimeError("The Optimizer run is already stopping.")
+            if self.active_query is None or self.base_url is None:
+                raise RuntimeError(
+                    "The current calculation query is not available yet; try again shortly."
+                )
+            query = self.active_query
+            base_url = self.base_url
+            self.stopping = True
+        try:
+            stop_url = optimizer.stop_optimization(base_url, query)
+        except Exception as error:
+            with self.lock:
+                self.stopping = False
+            raise RuntimeError(f"Stop request failed: {error}") from error
+        with self.lock:
+            self.stop_requested = True
+            self.stop_event.set()
+        self.append_log(f"GET {stop_url}")
+        self.append_log(f"Stop requested for query {query}.")
+        return self.snapshot()
 
     def snapshot(self) -> dict[str, object]:
         with self.lock:
@@ -150,6 +196,8 @@ class OptimizerRunState:
                 "result_file": self.result_file,
                 "active_query": self.active_query,
                 "run_id": self.run_id,
+                "stopping": self.stopping,
+                "stopped": self.stopped,
             }
 
 
@@ -652,6 +700,7 @@ POST_PATHS = frozenset({
     "/api/optimizer/group/create", "/api/optimizer/group/select",
     "/api/optimizer/group/delete", "/api/optimizer/files/add",
     "/api/optimizer/files/delete", "/api/optimizer/merge", "/api/optimizer/start",
+    "/api/optimizer/stop",
 })
 
 
@@ -694,6 +743,8 @@ def handle_post(request_path: str, data: object) -> tuple[object, int]:
         raise ValueError("Unknown Optimizer action.")
     if request_path == "/api/optimizer/start":
         return RUN_STATE.start(data), HTTPStatus.ACCEPTED
+    if request_path == "/api/optimizer/stop":
+        return RUN_STATE.stop(), HTTPStatus.OK
     if request_path.startswith("/api/optimizer/profile/"):
         return update_profile(data, delete=request_path.endswith("/delete")), HTTPStatus.OK
     with RUN_STATE.lock:

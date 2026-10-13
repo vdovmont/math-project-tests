@@ -19,10 +19,15 @@ from config import (
     START_REQUEST,
     STATE_POLL_INTERVAL_SECONDS,
     STATE_REQUEST,
+    STOP_REQUEST,
 )
 
 
 MISSING = object()
+
+
+class OptimizationStopped(Exception):
+    pass
 
 
 def build_url(base_url, request_path):
@@ -41,7 +46,9 @@ def request_json(url, timeout, body=None):
         return json.loads(response.read().decode(charset))
 
 
-def run_optimization(input_json, base_url, *, on_query=None, on_progress=None):
+def run_optimization(
+    input_json, base_url, *, on_query=None, on_progress=None, should_stop=None
+):
     start_url = build_url(base_url, START_REQUEST)
     start_response = request_json(start_url, REQUEST_TIMEOUT_SECONDS, input_json)
     if not isinstance(start_response, dict):
@@ -54,7 +61,11 @@ def run_optimization(input_json, base_url, *, on_query=None, on_progress=None):
 
     state_url = f"{build_url(base_url, STATE_REQUEST)}?{urlencode({'num': query})}"
     while True:
+        if should_stop is not None and should_stop():
+            raise OptimizationStopped()
         state_response = request_json(state_url, REQUEST_TIMEOUT_SECONDS)
+        if should_stop is not None and should_stop():
+            raise OptimizationStopped()
         if not (isinstance(state_response, dict) and state_response.get("solutions") == []):
             return query, state_response
         state = state_response.get("state")
@@ -66,6 +77,14 @@ def run_optimization(input_json, base_url, *, on_query=None, on_progress=None):
                 else f"Processing query {query}"
             )
         time.sleep(STATE_POLL_INTERVAL_SECONDS)
+
+
+def stop_optimization(base_url, query):
+    stop_url = f"{build_url(base_url, STOP_REQUEST)}?{urlencode({'queue': query})}"
+    request = Request(stop_url, headers={"Accept": "application/json"}, method="GET")
+    with urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+        response.read()
+    return stop_url
 
 
 def normalized_id(value):

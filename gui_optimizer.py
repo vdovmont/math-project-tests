@@ -1,6 +1,7 @@
 """Optimizer tab backend: independent profiles and API actions."""
 
 import json
+import hashlib
 import shutil
 import threading
 import time
@@ -367,7 +368,7 @@ def group_folder(group_id: str) -> Path:
     return folder
 
 
-def read_group_manifest(folder: Path) -> dict[str, str]:
+def read_group_manifest(folder: Path) -> dict[str, object]:
     try:
         payload = json.loads((folder / "group.json").read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
@@ -379,10 +380,113 @@ def read_group_manifest(folder: Path) -> dict[str, str]:
     ):
         raise OSError(f"Optimizer group '{folder.name}' has invalid metadata.")
     return {
+        "version": 1,
         "id": folder.name,
         "name": validate_group_name(payload.get("name")),
         "created_at": str(payload.get("created_at", "")),
+        "input_hash": payload.get("input_hash")
+        if isinstance(payload.get("input_hash"), str) else None,
+        "last_merge_input_hash": payload.get("last_merge_input_hash")
+        if isinstance(payload.get("last_merge_input_hash"), str) else None,
+        "last_merge_status": payload.get("last_merge_status")
+        if payload.get("last_merge_status") in {"done", "failed"} else None,
+        "last_merge_input_count": payload.get("last_merge_input_count")
+        if isinstance(payload.get("last_merge_input_count"), int) else None,
+        "last_merge_warning_count": payload.get("last_merge_warning_count")
+        if isinstance(payload.get("last_merge_warning_count"), int) else None,
+        "last_merge_error_count": payload.get("last_merge_error_count")
+        if isinstance(payload.get("last_merge_error_count"), int) else None,
+        "last_merge_distance_percent": payload.get("last_merge_distance_percent")
+        if isinstance(payload.get("last_merge_distance_percent"), (int, float)) else None,
     }
+
+
+def write_group_manifest(folder: Path, manifest: dict[str, object]) -> None:
+    temporary = folder / "group.json.tmp"
+    try:
+        temporary.write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        temporary.replace(folder / "group.json")
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def calculate_group_input_hash(folder: Path) -> str:
+    digest = hashlib.sha256()
+    for file in sorted(
+        (path for path in (folder / "initial").glob("*-input.json") if path.is_file()),
+        key=lambda path: path.name.casefold(),
+    ):
+        name = file.name.encode("utf-8")
+        content = file.read_bytes()
+        digest.update(len(name).to_bytes(8, "big"))
+        digest.update(name)
+        digest.update(len(content).to_bytes(8, "big"))
+        digest.update(content)
+    return digest.hexdigest()
+
+
+def sync_group_input_hash(folder: Path) -> dict[str, object]:
+    manifest = read_group_manifest(folder)
+    input_hash = calculate_group_input_hash(folder)
+    changed = manifest.get("input_hash") != input_hash
+    if changed:
+        manifest["input_hash"] = input_hash
+    report_file = folder / "merged" / "merge-report.txt"
+    report_exists = report_file.is_file()
+    if manifest.get("last_merge_status") is None and report_exists:
+        manifest["last_merge_input_hash"] = input_hash
+        manifest["last_merge_status"] = (
+            "done" if (folder / "merged" / "merged-input.json").is_file()
+            else "failed"
+        )
+        changed = True
+    if report_exists and manifest.get("last_merge_input_count") is None:
+        manifest["last_merge_input_count"] = sum(
+            1 for path in (folder / "initial").glob("*-input.json") if path.is_file()
+        )
+        changed = True
+    if report_exists and (
+        manifest.get("last_merge_warning_count") is None
+        or manifest.get("last_merge_error_count") is None
+    ):
+        try:
+            report_text = report_file.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            report_text = ""
+        warning_line = next((
+            line for line in report_text.splitlines() if line.startswith("Warnings: ")
+        ), "")
+        try:
+            warning_count = int(warning_line.removeprefix("Warnings: "))
+        except ValueError:
+            warning_count = 0
+        manifest["last_merge_warning_count"] = warning_count
+        manifest["last_merge_error_count"] = (
+            1 if manifest.get("last_merge_status") == "failed" else 0
+        )
+        changed = True
+    if (
+        manifest.get("last_merge_status") == "done"
+        and manifest.get("last_merge_distance_percent") is None
+    ):
+        try:
+            merged_payload = json.loads(
+                (folder / "merged" / "merged-input.json").read_text(encoding="utf-8")
+            )
+            distance = merged_payload.get("options", {}).get(
+                "optimize_jobs_between_depots_distance"
+            )
+            if isinstance(distance, (int, float)):
+                manifest["last_merge_distance_percent"] = distance
+                changed = True
+        except (OSError, UnicodeError, json.JSONDecodeError, AttributeError):
+            pass
+    if changed:
+        write_group_manifest(folder, manifest)
+    return manifest
 
 
 def load_group_selection() -> str | None:
@@ -418,7 +522,7 @@ def optimizer_groups() -> dict[str, object]:
     groups = []
     for folder in OPTIMIZER_GROUPS_FOLDER.iterdir():
         if folder.is_dir() and not folder.is_symlink() and (folder / "group.json").is_file():
-            manifest = read_group_manifest(folder)
+            manifest = sync_group_input_hash(folder)
             initial = sorted(
                 (
                     {"name": file.name, "path": file.name, "size": file.stat().st_size}
@@ -466,6 +570,10 @@ def optimizer_groups() -> dict[str, object]:
                 "merge_report": merge_report,
                 "merged_distance_percent": merged_distance_percent,
                 "outputs": outputs,
+                "merge_blocked": (
+                    manifest.get("last_merge_status") == "failed"
+                    and manifest.get("last_merge_input_hash") == manifest.get("input_hash")
+                ),
             })
     groups.sort(key=lambda item: (item["name"].casefold(), item["id"]))
     selected = load_group_selection()
@@ -492,7 +600,11 @@ def create_group(data: object) -> dict[str, object]:
         (folder / "group.json").write_text(
             json.dumps(
                 {"version": 1, "id": group_id, "name": name,
-                 "created_at": datetime.now().isoformat(timespec="seconds")},
+                 "created_at": datetime.now().isoformat(timespec="seconds"),
+                 "input_hash": calculate_group_input_hash(folder),
+                 "last_merge_input_hash": None, "last_merge_status": None,
+                 "last_merge_input_count": None, "last_merge_warning_count": None,
+                 "last_merge_error_count": None, "last_merge_distance_percent": None},
                 indent=2,
             ) + "\n",
             encoding="utf-8",
@@ -539,7 +651,6 @@ def add_initial_files(data: object) -> dict[str, object]:
         path.write_text(content, encoding="utf-8")
     merged_folder = folder.parent / "merged"
     (merged_folder / "merged-input.json").unlink(missing_ok=True)
-    (merged_folder / "merge-report.txt").unlink(missing_ok=True)
     return optimizer_groups()
 
 
@@ -604,6 +715,16 @@ def merge_group(data: object) -> dict[str, object]:
         merged_folder = folder / "merged"
         merged_file = merged_folder / "merged-input.json"
         report_file = merged_folder / "merge-report.txt"
+        manifest = sync_group_input_hash(folder)
+        if (
+            manifest.get("last_merge_status") == "failed"
+            and manifest.get("last_merge_input_hash") == manifest.get("input_hash")
+        ):
+            raise ValueError(
+                "The previous merge failed and the input JSONs have not changed. "
+                "Fix the reported input errors by adding, replacing, or deleting input JSONs "
+                "before starting another merge."
+            )
         merged_file.unlink(missing_ok=True)
         documents = []
         try:
@@ -622,6 +743,13 @@ def merge_group(data: object) -> dict[str, object]:
             report = f"Optimizer input merge report\n\nMerge failed\n\n{error}\n"
 
         report_file.write_text(report, encoding="utf-8")
+        manifest["last_merge_input_hash"] = manifest["input_hash"]
+        manifest["last_merge_status"] = "done" if merged is not None else "failed"
+        manifest["last_merge_input_count"] = len(initial_files)
+        manifest["last_merge_warning_count"] = warning_count
+        manifest["last_merge_error_count"] = error_count
+        manifest["last_merge_distance_percent"] = distance if merged is not None else None
+        write_group_manifest(folder, manifest)
         if merged is not None:
             temporary = merged_file.with_suffix(".json.tmp")
             try:
@@ -651,6 +779,7 @@ def delete_files(data: object) -> dict[str, object]:
         raise ValueError("Select one or more files to delete.")
     files = []
     deleted_initial = False
+    deleted_merge_report = False
     for item in data["files"]:
         if not isinstance(item, dict):
             raise ValueError("Invalid file selection.")
@@ -658,12 +787,24 @@ def delete_files(data: object) -> dict[str, object]:
             data.get("group_id"), item.get("category"), item.get("path")
         ))
         deleted_initial = deleted_initial or item.get("category") == "initial"
+        deleted_merge_report = deleted_merge_report or (
+            item.get("category") == "merged" and item.get("path") == "merge-report.txt"
+        )
     for file in files:
         file.unlink()
     if deleted_initial:
         merged_folder = group_folder(data.get("group_id")) / "merged"
         (merged_folder / "merged-input.json").unlink(missing_ok=True)
-        (merged_folder / "merge-report.txt").unlink(missing_ok=True)
+    if deleted_merge_report:
+        folder = group_folder(data.get("group_id"))
+        manifest = sync_group_input_hash(folder)
+        manifest["last_merge_input_hash"] = None
+        manifest["last_merge_status"] = None
+        manifest["last_merge_input_count"] = None
+        manifest["last_merge_warning_count"] = None
+        manifest["last_merge_error_count"] = None
+        manifest["last_merge_distance_percent"] = None
+        write_group_manifest(folder, manifest)
     return optimizer_groups()
 
 

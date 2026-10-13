@@ -3824,6 +3824,13 @@
         optimizerRunButton.title = 'Add at least one initial JSON to the selected group.';
         return;
       }
+      if (group.merge_blocked) {
+        optimizerRunButton.textContent = 'Fix previous merge errors';
+        optimizerRunButton.disabled = true;
+        optimizerRunButton.title =
+          'The previous merge failed and the input JSONs have not changed.';
+        return;
+      }
       const currentDistance = Number(distanceInput.value);
       const mergeIsCurrent = group.merged &&
         Number(group.merged_distance_percent) === currentDistance;
@@ -3842,6 +3849,59 @@
     function fillGroupSelect(select, preferredId = selectedOptimizerGroupId) {
       select.replaceChildren(...optimizerGroups.map(group => new Option(group.name, group.id)));
       if (optimizerGroups.some(group => group.id === preferredId)) select.value = preferredId;
+    }
+
+    async function showSelectedOptimizerMergeReport() {
+      if (optimizerRunRunning) return;
+      const group = selectedGroup();
+      const warningCount = Number(group?.last_merge_warning_count) || 0;
+      const errorCount = Number(group?.last_merge_error_count) || 0;
+      if (!group?.merge_report || !group.last_merge_status) {
+        optimizerConsole.textContent = 'Waiting for an Optimizer action...';
+        return;
+      }
+      const inputCount = Number.isInteger(group.last_merge_input_count)
+        ? group.last_merge_input_count : group.initial.length;
+      const previousResultLines = [
+        'Previous merge result:',
+        `Input files: ${inputCount}`,
+        `Warnings: ${warningCount}`,
+        `Errors: ${errorCount}`,
+      ];
+      if (
+        group.last_merge_status === 'done'
+        && group.last_merge_distance_percent !== null
+        && Number.isFinite(Number(group.last_merge_distance_percent))
+      ) {
+        previousResultLines.push(
+          `Distance: ${formatDistancePercent(group.last_merge_distance_percent)}%`,
+        );
+      }
+      const previousResult = previousResultLines.join('\n');
+      if (!warningCount && !errorCount) {
+        optimizerConsole.textContent = previousResult;
+        return;
+      }
+      const requestedGroupId = group.id;
+      try {
+        const query = new URLSearchParams({
+          group: group.id,
+          category: 'merged',
+          path: group.merge_report.path,
+        });
+        const data = await fetchJson(`/api/optimizer/file?${query}`);
+        if (!optimizerRunRunning && selectedOptimizerGroupId === requestedGroupId) {
+          const blockedNotice = group.merge_blocked
+            ? '\n\nNew merge blocked: the input JSONs have not changed. Fix the errors below by changing the group inputs.'
+            : '';
+          optimizerConsole.textContent =
+            `${previousResult}${blockedNotice}\n\nPrevious merge report:\n${data.content}`;
+        }
+      } catch (error) {
+        if (selectedOptimizerGroupId === requestedGroupId) {
+          optimizerConsole.textContent = `Could not load merge report\n\n${error.message}`;
+        }
+      }
     }
 
     function optimizerFileButton(group, category, file) {
@@ -3934,6 +3994,7 @@
             });
             selectedOptimizerGroupId = data.selected_group_id;
             renderOptimizerGroups();
+            await showSelectedOptimizerMergeReport();
           } catch (error) {
             errorView.textContent = error.message;
             renderOptimizerGroups();
@@ -4115,7 +4176,9 @@
         });
         optimizerGroups = data.groups;
         selectedOptimizerGroupId = data.selected_group_id;
-        optimizerConsole.textContent = data.report;
+        optimizerConsole.textContent = data.merge_status === 'failed'
+          ? `New merge blocked until the group inputs change. Fix the errors below before starting another merge.\n\n${data.report}`
+          : data.report;
         lastOptimizerResultFile = null;
         optimizerOpenResult.disabled = true;
         if (data.merge_status === 'done') {

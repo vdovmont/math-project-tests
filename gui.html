@@ -3359,6 +3359,10 @@
     let loadedOptimizerFileContent = null;
     let optimizerCopyFeedbackTimeout = null;
     let lastOptimizerResultFile = null;
+    let optimizerRunRunning = false;
+    let optimizerStatusPolling = false;
+    let completedOptimizerRunId = 0;
+    let optimizerStatusMode = 'idle';
     const openOptimizerGroups = new Set();
     const openOptimizerSections = new Set();
     const optionFieldNames = [
@@ -3701,6 +3705,13 @@
     function updateOptimizerRunButton() {
       const group = selectedGroup();
       optimizerRunButton.classList.add('optimizer-merge-button');
+      if (optimizerRunRunning) {
+        optimizerRunButton.classList.remove('optimizer-merge-button');
+        optimizerRunButton.textContent = 'Optimization running';
+        optimizerRunButton.disabled = true;
+        optimizerRunButton.title = 'The selected merged input is being processed.';
+        return;
+      }
       if (!group) {
         optimizerRunButton.textContent = 'Create new group and add JSONs in it';
         optimizerRunButton.disabled = true;
@@ -3719,8 +3730,8 @@
       if (mergeIsCurrent) {
         optimizerRunButton.classList.remove('optimizer-merge-button');
         optimizerRunButton.textContent = 'Start optimization';
-        optimizerRunButton.disabled = true;
-        optimizerRunButton.title = 'Optimization is not implemented yet.';
+        optimizerRunButton.disabled = false;
+        optimizerRunButton.title = 'Send the merged input to MathCore.';
       } else {
         optimizerRunButton.textContent = 'Start merge';
         optimizerRunButton.disabled = false;
@@ -3936,8 +3947,38 @@
     });
     optimizerRunButton.addEventListener('click', async () => {
       const group = selectedGroup();
-      if (!group || !group.initial.length || group.merged &&
-          Number(group.merged_distance_percent) === Number(distanceInput.value)) return;
+      if (!group || !group.initial.length || optimizerRunRunning) return;
+      const mergeIsCurrent = group.merged &&
+        Number(group.merged_distance_percent) === Number(distanceInput.value);
+      if (mergeIsCurrent) {
+        if (!baseUrlInput.reportValidity()) return;
+        optimizerStatusMode = 'optimization';
+        optimizerRunButton.disabled = true;
+        optimizerOpenResult.disabled = true;
+        lastOptimizerResultFile = null;
+        errorView.textContent = '';
+        try {
+          const status = await fetchJson('/api/optimizer/start', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              group_id: group.id,
+              base_url: baseUrlInput.value,
+              distance_percent: distanceInput.value,
+            }),
+          });
+          applyOptimizerStatus(status);
+        } catch (error) {
+          optimizerStatusMode = 'merge';
+          optimizerStatus.className = 'status failed';
+          optimizerStatus.textContent = 'Failed';
+          optimizerConsole.textContent = `Could not start optimization\n\n${error.message}`;
+          errorView.textContent = error.message;
+          optimizerRunRunning = false;
+          updateOptimizerRunButton();
+        }
+        return;
+      }
+      optimizerStatusMode = 'merge';
       optimizerRunButton.disabled = true;
       optimizerStatus.className = 'status running';
       optimizerStatus.textContent = 'Merging';
@@ -3982,7 +4023,9 @@
     optimizerOpenResult.addEventListener('click', async () => {
       if (!lastOptimizerResultFile) return;
       openOptimizerGroups.add(lastOptimizerResultFile.group_id);
-      openOptimizerSections.add(`${lastOptimizerResultFile.group_id}:merged`);
+      openOptimizerSections.add(
+        `${lastOptimizerResultFile.group_id}:${lastOptimizerResultFile.category}`
+      );
       document.querySelector('[data-optimizer-tab="optimizer-files-page"]').click();
       renderOptimizerGroups();
       await loadOptimizerFile(
@@ -3991,6 +4034,58 @@
         lastOptimizerResultFile.path,
       );
     });
+
+    function formatOptimizerElapsed(seconds) {
+      const total = Math.max(0, Math.floor(Number(seconds) || 0));
+      const hours = Math.floor(total / 3600);
+      const minutes = Math.floor((total % 3600) / 60);
+      const remainder = total % 60;
+      return hours
+        ? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
+        : `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+    }
+
+    function applyOptimizerStatus(status) {
+      if (status.run_id === 0 || optimizerStatusMode === 'merge' && !status.running) return;
+      optimizerStatusMode = 'optimization';
+      optimizerRunRunning = Boolean(status.running);
+      const elapsed = formatOptimizerElapsed(status.elapsed_time_seconds);
+      optimizerTiming.textContent = `Time passed: ${elapsed}`;
+      const logText = (status.logs || []).join('\n');
+      optimizerConsole.textContent = `${logText}${logText ? '\n\n' : ''}Time passed: ${elapsed}\n`;
+      if (status.result_file) {
+        lastOptimizerResultFile = status.result_file;
+        optimizerOpenResult.disabled = false;
+      }
+      if (status.running) {
+        optimizerStatus.className = 'status running';
+        optimizerStatus.textContent = 'Running';
+      } else if (status.exit_code === 0) {
+        optimizerStatus.className = 'status success';
+        optimizerStatus.textContent = 'Done';
+      } else if (status.exit_code !== null) {
+        optimizerStatus.className = 'status failed';
+        optimizerStatus.textContent = 'Failed';
+      }
+      updateOptimizerRunButton();
+      if (!status.running && status.run_id > completedOptimizerRunId) {
+        completedOptimizerRunId = status.run_id;
+        loadOptimizerGroups().catch(error => { errorView.textContent = error.message; });
+      }
+    }
+
+    async function pollOptimizerStatus() {
+      if (optimizerStatusPolling) return;
+      optimizerStatusPolling = true;
+      try {
+        const status = await fetchJson('/api/optimizer/status');
+        applyOptimizerStatus(status);
+      } catch (error) {
+        errorView.textContent = `Optimizer status connection failed: ${error.message}`;
+      } finally {
+        optimizerStatusPolling = false;
+      }
+    }
     refreshFilesButton.addEventListener('click', () => {
       openOptimizerGroups.clear();
       openOptimizerSections.clear();
@@ -4188,8 +4283,9 @@
 
 
     form.addEventListener('submit', event => event.preventDefault());
-    Promise.all([loadDefaults(), loadOptimizerGroups()])
+    Promise.all([loadDefaults(), loadOptimizerGroups(), pollOptimizerStatus()])
       .catch(error => { errorView.textContent = error.message; });
+    window.setInterval(pollOptimizerStatus, 500);
     })();
 
     document.querySelectorAll('[data-tool]').forEach(button => {

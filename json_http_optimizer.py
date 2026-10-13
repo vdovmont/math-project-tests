@@ -3,8 +3,10 @@
 import copy
 import json
 import math
+import time
 from collections import defaultdict
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
+from urllib.request import Request, urlopen
 
 from config import (
     OPTIMIZER_BASE_URL as BASE_URL,
@@ -13,10 +15,57 @@ from config import (
     OPTIMIZER_MERGE_FATAL_DUPLICATE_FIELDS,
     OPTIMIZER_MERGE_LIST_FIELDS,
     OPTIMIZER_MERGE_RENAME_DUPLICATE_FIELDS,
+    REQUEST_TIMEOUT_SECONDS,
+    START_REQUEST,
+    STATE_POLL_INTERVAL_SECONDS,
+    STATE_REQUEST,
 )
 
 
 MISSING = object()
+
+
+def build_url(base_url, request_path):
+    return f"{base_url.rstrip('/')}/{request_path.lstrip('/')}"
+
+
+def request_json(url, timeout, body=None):
+    headers = {"Accept": "application/json"}
+    request_body = None
+    if body is not None:
+        request_body = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        headers["Content-Type"] = "application/json; charset=utf-8"
+    request = Request(url, data=request_body, headers=headers, method="GET")
+    with urlopen(request, timeout=timeout) as response:
+        charset = response.headers.get_content_charset() or "utf-8"
+        return json.loads(response.read().decode(charset))
+
+
+def run_optimization(input_json, base_url, *, on_query=None, on_progress=None):
+    start_url = build_url(base_url, START_REQUEST)
+    start_response = request_json(start_url, REQUEST_TIMEOUT_SECONDS, input_json)
+    if not isinstance(start_response, dict):
+        raise ValueError("/start response must be a JSON object.")
+    query = start_response.get("query")
+    if not isinstance(query, int) or isinstance(query, bool):
+        raise ValueError("/start response has no numeric 'query'.")
+    if on_query is not None:
+        on_query(query, start_url)
+
+    state_url = f"{build_url(base_url, STATE_REQUEST)}?{urlencode({'num': query})}"
+    while True:
+        state_response = request_json(state_url, REQUEST_TIMEOUT_SECONDS)
+        if not (isinstance(state_response, dict) and state_response.get("solutions") == []):
+            return query, state_response
+        state = state_response.get("state")
+        description = state.get("desc") if isinstance(state, dict) else None
+        if on_progress is not None:
+            on_progress(
+                description.strip()
+                if isinstance(description, str) and description.strip()
+                else f"Processing query {query}"
+            )
+        time.sleep(STATE_POLL_INTERVAL_SECONDS)
 
 
 def validate_options(data):

@@ -3,6 +3,7 @@
 import json
 import shutil
 import threading
+import time
 import uuid
 from datetime import datetime
 from http import HTTPStatus
@@ -27,6 +28,128 @@ from config import (
 
 LOCK = threading.Lock()
 GROUP_LOCK = threading.Lock()
+
+
+class OptimizerRunState:
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.running = False
+        self.logs: list[str] = []
+        self.started_monotonic: float | None = None
+        self.elapsed_time_seconds = 0.0
+        self.exit_code: int | None = None
+        self.result_file: dict[str, str] | None = None
+        self.active_query: int | None = None
+        self.run_id = 0
+        self.progress_active = False
+
+    def append_log(self, line: str, *, progress: bool = False) -> None:
+        with self.lock:
+            if progress and self.progress_active and self.logs:
+                self.logs[-1] = line
+            else:
+                self.logs.append(line)
+            self.progress_active = progress
+
+    def start(self, data: object) -> dict[str, object]:
+        if not isinstance(data, dict):
+            raise ValueError("Request body must be a JSON object.")
+        options = optimizer.validate_options(data)
+        folder = group_folder(data.get("group_id"))
+        merged_file = folder / "merged" / "merged-input.json"
+        if not merged_file.is_file():
+            raise ValueError("Merge the selected group before starting optimization.")
+        try:
+            merged_json = json.loads(merged_file.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise ValueError(f"Could not read merged input: {error}") from error
+        if not isinstance(merged_json, dict):
+            raise ValueError("Merged input must contain a JSON object.")
+        merged_distance = merged_json.get("options", {}).get(
+            "optimize_jobs_between_depots_distance"
+        ) if isinstance(merged_json.get("options"), dict) else None
+        if merged_distance != options["distance_percent"]:
+            raise ValueError("Distance changed after the merge. Merge the group again.")
+        with self.lock:
+            if self.running:
+                raise RuntimeError("An Optimizer run is already in progress.")
+            self.running = True
+            self.logs = []
+            self.started_monotonic = time.monotonic()
+            self.elapsed_time_seconds = 0.0
+            self.exit_code = None
+            self.result_file = None
+            self.active_query = None
+            self.progress_active = False
+            self.run_id += 1
+        threading.Thread(
+            target=self._run,
+            args=(folder, merged_json, str(options["base_url"])),
+            daemon=True,
+        ).start()
+        return self.snapshot()
+
+    def _run(self, folder: Path, merged_json: dict[str, object], base_url: str) -> None:
+        exit_code = 1
+        try:
+            self.append_log(f"Sending merged input to {base_url}...")
+
+            def on_query(query: int, start_url: str) -> None:
+                with self.lock:
+                    self.active_query = query
+                self.append_log(f"GET {start_url}")
+                self.append_log(f"Query number: {query}")
+
+            _, output = optimizer.run_optimization(
+                merged_json,
+                base_url,
+                on_query=on_query,
+                on_progress=lambda line: self.append_log(line, progress=True),
+            )
+            outputs = folder / "outputs"
+            outputs.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            output_file = outputs / f"optimization-{timestamp}-output.json"
+            output_file.write_text(
+                json.dumps(output, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            self.append_log(f"Saved result: {output_file.name}")
+            with self.lock:
+                self.result_file = {
+                    "group_id": folder.name,
+                    "category": "outputs",
+                    "path": output_file.name,
+                }
+            exit_code = 0
+        except Exception as error:
+            self.append_log(f"Optimization failed: {error}")
+        finally:
+            with self.lock:
+                if self.started_monotonic is not None:
+                    self.elapsed_time_seconds = time.monotonic() - self.started_monotonic
+                self.running = False
+                self.exit_code = exit_code
+                self.active_query = None
+                self.progress_active = False
+
+    def snapshot(self) -> dict[str, object]:
+        with self.lock:
+            elapsed = self.elapsed_time_seconds
+            if self.running and self.started_monotonic is not None:
+                elapsed = time.monotonic() - self.started_monotonic
+            return {
+                "running": self.running,
+                "logs": list(self.logs),
+                "elapsed_time_seconds": elapsed,
+                "exit_code": self.exit_code,
+                "result_file": self.result_file,
+                "active_query": self.active_query,
+                "run_id": self.run_id,
+            }
+
+
+RUN_STATE = OptimizerRunState()
 
 
 def validate_name(name):
@@ -448,12 +571,15 @@ def delete_files(data: object) -> dict[str, object]:
     return optimizer_groups()
 
 
-GET_PATHS = frozenset({"/api/optimizer/config", "/api/optimizer/groups", "/api/optimizer/file"})
+GET_PATHS = frozenset({
+    "/api/optimizer/config", "/api/optimizer/groups", "/api/optimizer/file",
+    "/api/optimizer/status",
+})
 POST_PATHS = frozenset({
     "/api/optimizer/profile/save", "/api/optimizer/profile/delete",
     "/api/optimizer/group/create", "/api/optimizer/group/select",
     "/api/optimizer/group/delete", "/api/optimizer/files/add",
-    "/api/optimizer/files/delete", "/api/optimizer/merge",
+    "/api/optimizer/files/delete", "/api/optimizer/merge", "/api/optimizer/start",
 })
 
 
@@ -463,6 +589,8 @@ def handle_get(request) -> None:
         request.send_json(config())
     elif parsed.path == "/api/optimizer/groups":
         request.send_json(optimizer_groups())
+    elif parsed.path == "/api/optimizer/status":
+        request.send_json(RUN_STATE.snapshot())
     else:
         try:
             query = parse_qs(parsed.query)
@@ -484,8 +612,15 @@ def handle_get(request) -> None:
 def handle_post(request_path: str, data: object) -> tuple[object, int]:
     if request_path not in POST_PATHS:
         raise ValueError("Unknown Optimizer action.")
+    if request_path == "/api/optimizer/start":
+        return RUN_STATE.start(data), HTTPStatus.ACCEPTED
     if request_path.startswith("/api/optimizer/profile/"):
         return update_profile(data, delete=request_path.endswith("/delete")), HTTPStatus.OK
+    with RUN_STATE.lock:
+        if RUN_STATE.running:
+            raise RuntimeError(
+                "Wait for the current Optimizer run to finish before changing its group."
+            )
     actions = {
         "/api/optimizer/group/create": create_group,
         "/api/optimizer/group/select": select_group,

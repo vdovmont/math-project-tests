@@ -73,6 +73,7 @@ class OptimizerRunState:
         with self.lock:
             if self.running:
                 raise RuntimeError("An Optimizer run is already in progress.")
+            previous_options, previous_profile = save_previous_profile(data)
             self.running = True
             self.logs = []
             self.started_monotonic = time.monotonic()
@@ -87,7 +88,10 @@ class OptimizerRunState:
             args=(folder, merged_json, str(options["base_url"])),
             daemon=True,
         ).start()
-        return self.snapshot()
+        result = self.snapshot()
+        result["previous_options"] = previous_options
+        result["previous_profile"] = previous_profile
+        return result
 
     def _run(self, folder: Path, merged_json: dict[str, object], base_url: str) -> None:
         exit_code = 1
@@ -161,16 +165,20 @@ def validate_name(name):
     return name
 
 
-def load_profiles():
+def load_profile_store():
     try:
         payload = json.loads(PROFILE_FILE.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return {}
-    except (UnicodeError, json.JSONDecodeError) as error:
+        return None, None, {}
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise OSError(f"Could not read Optimizer profiles: {error}") from error
     try:
         if not isinstance(payload, dict) or payload.get("version") != 1:
             raise ValueError("Unsupported profile format.")
+        raw_previous = payload.get("previous")
+        previous = (
+            None if raw_previous is None else validate_profile_options(raw_previous)
+        )
         profiles = payload.get("profiles")
         if not isinstance(profiles, dict) or len(profiles) > MAX_SAVED_PROFILES:
             raise ValueError("Invalid profiles object.")
@@ -182,9 +190,38 @@ def load_profiles():
                 raise ValueError("Duplicate profile names.")
             names.add(name.casefold())
             result[name] = validate_profile_options(options)
-        return result
+        raw_previous_profile = payload.get("previous_profile")
+        previous_profile = None
+        if isinstance(raw_previous_profile, str) and previous is not None:
+            previous_profile = next((
+                name for name, profile in result.items()
+                if name.casefold() == raw_previous_profile.casefold()
+                and profile == previous
+            ), None)
+        elif raw_previous_profile is not None:
+            raise ValueError("Invalid previous profile name.")
+        return previous, previous_profile, result
     except ValueError as error:
         raise OSError(f"Could not load Optimizer profiles: {error}") from error
+
+
+def load_profiles():
+    return load_profile_store()[2]
+
+
+def write_profile_store(previous, previous_profile, profiles):
+    PROFILE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temporary = PROFILE_FILE.with_suffix(".json.tmp")
+    try:
+        temporary.write_text(json.dumps({
+            "version": 1,
+            "previous": previous,
+            "previous_profile": previous_profile,
+            "profiles": profiles,
+        }, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        temporary.replace(PROFILE_FILE)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def validate_profile_options(options):
@@ -203,15 +240,16 @@ def config():
     except UrlStorageError as error:
         saved_urls = {}
         urls_error = str(error)
+    previous, previous_profile, profiles = load_profile_store()
     return {
         "default": {
             "base_url": optimizer.BASE_URL,
             "distance_percent": optimizer.DISTANCE_PERCENT,
             "saved_url_name": None,
         },
-        "previous": None,
-        "previous_profile": None,
-        "profiles": load_profiles(),
+        "previous": previous,
+        "previous_profile": previous_profile,
+        "profiles": profiles,
         "saved_urls": saved_urls,
         "urls_error": urls_error,
     }
@@ -222,12 +260,14 @@ def update_profile(data, *, delete=False):
         raise ValueError("Request body must be a JSON object.")
     name = validate_name(data.get("name"))
     with LOCK:
-        profiles = load_profiles()
+        previous, previous_profile, profiles = load_profile_store()
         existing = next((key for key in profiles if key.casefold() == name.casefold()), None)
         if delete:
             if existing is None:
                 raise ValueError("Profile does not exist.")
             del profiles[existing]
+            if previous_profile == existing:
+                previous_profile = None
             profile = None
         else:
             if existing is not None:
@@ -236,16 +276,24 @@ def update_profile(data, *, delete=False):
                 raise ValueError(f"At most {MAX_SAVED_PROFILES} profiles can be saved.")
             profile = validate_profile_options(data.get("options"))
             profiles[name] = profile
-        PROFILE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        temporary = PROFILE_FILE.with_suffix(".json.tmp")
-        try:
-            temporary.write_text(json.dumps({"version": 1, "profiles": profiles},
-                                            indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-            temporary.replace(PROFILE_FILE)
-        finally:
-            temporary.unlink(missing_ok=True)
+        write_profile_store(previous, previous_profile, profiles)
         return {"name": name, "profile": profile, "profiles": profiles,
-                "previous_profile": None}
+                "previous_profile": previous_profile}
+
+
+def save_previous_profile(data: dict[str, object]) -> tuple[dict[str, object], str | None]:
+    previous = validate_profile_options(data)
+    requested_name = data.get("profile_name")
+    with LOCK:
+        _, _, profiles = load_profile_store()
+        previous_profile = None
+        if isinstance(requested_name, str):
+            previous_profile = next((
+                name for name, profile in profiles.items()
+                if name.casefold() == requested_name.casefold() and profile == previous
+            ), None)
+        write_profile_store(previous, previous_profile, profiles)
+    return previous, previous_profile
 
 
 def validate_group_name(value: object) -> str:
@@ -571,9 +619,33 @@ def delete_files(data: object) -> dict[str, object]:
     return optimizer_groups()
 
 
+def optimizer_map(group_id: object, output_path: object) -> dict[str, object]:
+    folder = group_folder(group_id)
+    if not isinstance(output_path, str) or not output_path:
+        raise ValueError("Select an Optimizer output JSON.")
+    merged_file = folder / "merged" / "merged-input.json"
+    output_file = safe_category_file(folder.name, "outputs", output_path)
+    if output_file.suffix.lower() != ".json":
+        raise ValueError("Optimizer map output must be a JSON file.")
+    if not merged_file.is_file():
+        raise ValueError("The selected group has no merged input JSON.")
+    try:
+        merged = json.loads(merged_file.read_text(encoding="utf-8"))
+        output = json.loads(output_file.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"Could not read Optimizer map data: {error}") from error
+    manifest = read_group_manifest(folder)
+    return {
+        **optimizer.build_assignment_map(merged, output),
+        "group_id": folder.name,
+        "group_name": manifest["name"],
+        "output_path": output_path,
+    }
+
+
 GET_PATHS = frozenset({
     "/api/optimizer/config", "/api/optimizer/groups", "/api/optimizer/file",
-    "/api/optimizer/status",
+    "/api/optimizer/status", "/api/optimizer/map",
 })
 POST_PATHS = frozenset({
     "/api/optimizer/profile/save", "/api/optimizer/profile/delete",
@@ -591,6 +663,14 @@ def handle_get(request) -> None:
         request.send_json(optimizer_groups())
     elif parsed.path == "/api/optimizer/status":
         request.send_json(RUN_STATE.snapshot())
+    elif parsed.path == "/api/optimizer/map":
+        try:
+            query = parse_qs(parsed.query)
+            request.send_json(optimizer_map(
+                query.get("group", [None])[0], query.get("output", [None])[0]
+            ))
+        except (ValueError, UnicodeError) as error:
+            request.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
     else:
         try:
             query = parse_qs(parsed.query)

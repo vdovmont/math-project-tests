@@ -591,8 +591,58 @@
     }
     .route-choice input { width: auto; margin: 3px 0 0; }
     .route-detail { display: block; color: var(--muted); font-size: 11px; }
-    #route-map { width: 100%; height: 100%; background: #d9e1e8; }
+    #route-map, #optimizer-map { width: 100%; height: 100%; background: #d9e1e8; }
     .map-message { padding: 18px; color: var(--muted); }
+    .optimizer-map-controls label { margin-bottom: 10px; }
+    .optimizer-map-controls select { margin-top: 6px; }
+    .optimizer-map-summary { margin: 14px 0; color: var(--muted); font-size: 12px; }
+    .optimizer-map-legend { display: grid; gap: 8px; }
+    .optimizer-map-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin: 0;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .optimizer-map-legend-item input { width: auto; margin: 0; }
+    .optimizer-map-swatch { width: 18px; height: 18px; border: 2px solid #fff; border-radius: 50%; }
+    .optimizer-job-icon, .optimizer-depot-icon { background: transparent; border: 0; }
+    .optimizer-job-marker {
+      display: grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      background: var(--job-color);
+      box-shadow: 0 2px 7px rgba(0, 0, 0, .45);
+      color: #fff;
+      font: 800 9px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+    }
+    .optimizer-job-marker.changed-depot {
+      background: linear-gradient(
+        90deg,
+        var(--depot-color) 0%,
+        var(--depot-color) 50%,
+        var(--changed-color) 50%,
+        var(--changed-color) 100%
+      );
+    }
+    .optimizer-depot-marker {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border: 3px solid #fff;
+      border-radius: 5px;
+      background: var(--depot-color);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, .5);
+      color: #fff;
+      font: 900 14px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+    }
     .leaflet-popup-content { color: #162033; }
     .route-number-icon { background: transparent; border: 0; }
     .route-stop-number {
@@ -666,7 +716,7 @@
       #file-content, #result-content { height: 380px; }
       .map-layout { grid-template-columns: 1fr; height: auto; }
       .route-selector { max-height: 360px; border-right: 0; border-bottom: 1px solid var(--border); }
-      #route-map { height: 520px; }
+      #route-map, #optimizer-map { height: 520px; }
     }
   </style>
 </head>
@@ -853,6 +903,7 @@
       <nav class="tabs" aria-label="Optimizer sections">
         <button class="tab-button active" type="button" data-optimizer-tab="optimizer-runner-page">Runner</button>
         <button class="tab-button" type="button" data-optimizer-tab="optimizer-files-page">JSON files</button>
+        <button class="tab-button" type="button" data-optimizer-tab="optimizer-map-page">Map</button>
       </nav>
     <section id="optimizer-runner-page" class="optimizer-page active">
       <div class="layout">
@@ -1036,6 +1087,29 @@
               </div>
               <pre id="optimizer-file-content" class="file-content">No file selected.</pre>
             </section>
+          </div>
+        </section>
+      </section>
+
+      <section id="optimizer-map-page" class="optimizer-page" hidden>
+        <section class="panel files-panel map-panel">
+          <div class="map-toolbar">
+            <div>
+              <h2>Job depot assignments</h2>
+              <span id="optimizer-map-heading" class="timing">Select a group output.</span>
+            </div>
+            <button id="optimizer-map-refresh" class="small-button" type="button">Refresh map</button>
+          </div>
+          <div class="map-layout">
+            <div class="route-selector optimizer-map-controls">
+              <label>Output JSON
+                <select id="optimizer-map-output"></select>
+              </label>
+              <div id="optimizer-map-summary" class="optimizer-map-summary"></div>
+              <div id="optimizer-map-legend" class="optimizer-map-legend"></div>
+              <div id="optimizer-map-message" class="map-message"></div>
+            </div>
+            <div id="optimizer-map" aria-label="Optimizer job depot assignment map"></div>
           </div>
         </section>
       </section>
@@ -3343,6 +3417,12 @@
     const optimizerOpenResult = document.querySelector('#optimizer-open-result');
     const optimizerTiming = document.querySelector('#optimizer-timing');
     const optimizerConsole = document.querySelector('#optimizer-console');
+    const optimizerMapOutput = document.querySelector('#optimizer-map-output');
+    const optimizerMapHeading = document.querySelector('#optimizer-map-heading');
+    const optimizerMapSummary = document.querySelector('#optimizer-map-summary');
+    const optimizerMapLegend = document.querySelector('#optimizer-map-legend');
+    const optimizerMapMessage = document.querySelector('#optimizer-map-message');
+    const optimizerMapRefresh = document.querySelector('#optimizer-map-refresh');
 
     const errorView = document.querySelector('#optimizer-error');
     let defaultOptions = null;
@@ -3363,6 +3443,10 @@
     let optimizerStatusPolling = false;
     let completedOptimizerRunId = 0;
     let optimizerStatusMode = 'idle';
+    let optimizerMap = null;
+    const optimizerMapLayers = new Map();
+    const optimizerMapToggleStates = new Map();
+    let optimizerDepotColors = new Map();
     const openOptimizerGroups = new Set();
     const openOptimizerSections = new Set();
     const optionFieldNames = [
@@ -3858,6 +3942,7 @@
         group.initial.length || group.merged || group.merge_report || group.outputs.length);
       deleteGroupButton.disabled = !hasGroups;
       updateOptimizerRunButton();
+      syncOptimizerMapOutputs();
     }
 
     async function loadOptimizerGroups() {
@@ -3964,8 +4049,13 @@
               group_id: group.id,
               base_url: baseUrlInput.value,
               distance_percent: distanceInput.value,
+              saved_url_name: savedUrlSelect.value || null,
+              profile_name: savedProfileSelect.value || null,
             }),
           });
+          previousOptions = status.previous_options;
+          previousProfileName = status.previous_profile;
+          updateProfileButtons();
           applyOptimizerStatus(status);
         } catch (error) {
           optimizerStatusMode = 'merge';
@@ -4086,6 +4176,341 @@
         optimizerStatusPolling = false;
       }
     }
+
+    function optimizerDepotColor(depotId) {
+      const palette = [
+        '#2563eb', '#16a34a', '#9333ea', '#0891b2', '#ca8a04',
+        '#4f46e5', '#0d9488', '#c026d3', '#65a30d', '#0284c7',
+      ];
+      if (optimizerDepotColors.has(String(depotId))) {
+        return optimizerDepotColors.get(String(depotId));
+      }
+      let hash = 0;
+      for (const character of String(depotId)) hash += character.charCodeAt(0);
+      return palette[Math.abs(hash) % palette.length];
+    }
+
+    function ensureOptimizerMap() {
+      if (optimizerMap) return true;
+      if (typeof L === 'undefined') {
+        optimizerMapMessage.textContent =
+          'The map library could not load. Check the internet connection and refresh.';
+        return false;
+      }
+      optimizerMap = L.map('optimizer-map').setView([49.99, 36.24], 6);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(optimizerMap);
+      return true;
+    }
+
+    function clearOptimizerMap() {
+      if (optimizerMap) {
+        for (const item of optimizerMapLayers.values()) {
+          if (optimizerMap.hasLayer(item.layer)) optimizerMap.removeLayer(item.layer);
+        }
+      }
+      optimizerMapLayers.clear();
+      optimizerMapToggleStates.clear();
+      optimizerMapSummary.textContent = '';
+      optimizerMapLegend.replaceChildren();
+    }
+
+    function syncOptimizerMapOutputs() {
+      const previous = optimizerMapOutput.value;
+      const group = selectedGroup();
+      const outputs = group?.outputs || [];
+      optimizerMapOutput.replaceChildren(...outputs.map(file =>
+        new Option(file.path, file.path)));
+      if (outputs.some(file => file.path === previous)) {
+        optimizerMapOutput.value = previous;
+      } else if (outputs.length) {
+        optimizerMapOutput.value = outputs[outputs.length - 1].path;
+      }
+      optimizerMapOutput.disabled = !outputs.length;
+      optimizerMapHeading.textContent = group
+        ? group.name : 'Select an Optimizer group.';
+      if (!outputs.length) {
+        clearOptimizerMap();
+        optimizerMapMessage.textContent = group
+          ? 'The selected group has no output JSONs.'
+          : 'Select an Optimizer group first.';
+      }
+    }
+
+    function optimizerMapPopup(job) {
+      const content = document.createElement('div');
+      const title = document.createElement('strong');
+      title.textContent = `Job ${job.job_id}`;
+      const details = document.createElement('div');
+      details.style.whiteSpace = 'pre-line';
+      details.textContent = job.changed
+        ? `Original depot: ${job.original_depot}\nOutput depot: ${job.output_depot}\nDepot changed`
+        : `Depot: ${job.original_depot}\nDepot unchanged`;
+      content.append(title, details);
+      return content;
+    }
+
+    function fitVisibleOptimizerMarks() {
+      if (!optimizerMap) return;
+      const bounds = L.latLngBounds([]);
+      for (const item of optimizerMapLayers.values()) {
+        if (!optimizerMap.hasLayer(item.layer)) continue;
+        for (const coordinate of item.coordinates) bounds.extend(coordinate);
+      }
+      if (bounds.isValid()) optimizerMap.fitBounds(bounds.pad(0.15), {maxZoom: 16});
+    }
+
+    function updateOptimizerMapVisibility() {
+      if (!optimizerMap) return;
+      for (const [key, mapItem] of optimizerMapLayers) {
+        let visible;
+        if (key.startsWith('__changed__:')) {
+          const depotId = key.slice('__changed__:'.length);
+          visible = optimizerMapToggleStates.get('__changed__') !== false
+            || optimizerMapToggleStates.get(depotId) !== false;
+        } else {
+          visible = optimizerMapToggleStates.get(key) !== false;
+        }
+        if (visible && !optimizerMap.hasLayer(mapItem.layer)) {
+          mapItem.layer.addTo(optimizerMap);
+        } else if (!visible && optimizerMap.hasLayer(mapItem.layer)) {
+          optimizerMap.removeLayer(mapItem.layer);
+        }
+      }
+      fitVisibleOptimizerMarks();
+    }
+
+    function addOptimizerLegend(key, color, text, square = false) {
+      const item = document.createElement('label');
+      item.className = 'optimizer-map-legend-item';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = true;
+      optimizerMapToggleStates.set(key, true);
+      const swatch = document.createElement('span');
+      swatch.className = 'optimizer-map-swatch';
+      swatch.style.background = color;
+      if (square) swatch.style.borderRadius = '4px';
+      const label = document.createElement('span');
+      label.textContent = text;
+      checkbox.addEventListener('change', () => {
+        optimizerMapToggleStates.set(key, checkbox.checked);
+        updateOptimizerMapVisibility();
+      });
+      item.append(checkbox, swatch, label);
+      optimizerMapLegend.append(item);
+    }
+
+    function clippedOptimizerHue(polygon, depotPoint, otherPoint, coverageFraction) {
+      const direction = otherPoint.subtract(depotPoint);
+      const distance = Math.hypot(direction.x, direction.y);
+      if (!distance || !polygon.length) return polygon;
+      const unit = L.point(direction.x / distance, direction.y / distance);
+      const limit = distance * coverageFraction;
+      const position = point =>
+        (point.x - depotPoint.x) * unit.x + (point.y - depotPoint.y) * unit.y;
+      const result = [];
+      for (let index = 0; index < polygon.length; index += 1) {
+        const current = polygon[index];
+        const previous = polygon[(index + polygon.length - 1) % polygon.length];
+        const currentPosition = position(current);
+        const previousPosition = position(previous);
+        const currentInside = currentPosition <= limit;
+        const previousInside = previousPosition <= limit;
+        if (currentInside !== previousInside) {
+          const ratio = (limit - previousPosition) / (currentPosition - previousPosition);
+          result.push(L.point(
+            previous.x + (current.x - previous.x) * ratio,
+            previous.y + (current.y - previous.y) * ratio,
+          ));
+        }
+        if (currentInside) result.push(current);
+      }
+      return result;
+    }
+
+    function addOptimizerDepotHues(depots, distancePercent) {
+      if (depots.length < 2) return;
+      const projected = depots.map(depot => ({
+        depot,
+        point: L.CRS.EPSG3857.project(L.latLng(depot.lat, depot.lon)),
+      }));
+      const coverageFraction = Math.max(
+        0, Math.min(0.5, 0.5 - distancePercent / 200),
+      );
+      for (const current of projected) {
+        const distances = projected
+          .filter(item => item !== current)
+          .map(item => Math.hypot(
+            item.point.x - current.point.x,
+            item.point.y - current.point.y,
+          ))
+          .filter(distance => distance > 0);
+        if (!distances.length) continue;
+        const radius = Math.min(...distances);
+        let polygon = Array.from({length: 96}, (_, index) => {
+          const angle = index / 96 * Math.PI * 2;
+          return L.point(
+            current.point.x + Math.cos(angle) * radius,
+            current.point.y + Math.sin(angle) * radius,
+          );
+        });
+        for (const other of projected) {
+          if (other === current) continue;
+          polygon = clippedOptimizerHue(
+            polygon, current.point, other.point, coverageFraction,
+          );
+        }
+        if (polygon.length < 3) continue;
+        const mapItem = optimizerMapLayers.get(String(current.depot.id));
+        if (!mapItem) continue;
+        L.polygon(
+          polygon.map(point => L.CRS.EPSG3857.unproject(point)),
+          {
+            color: optimizerDepotColor(current.depot.id),
+            weight: 1,
+            opacity: 0.75,
+            fillColor: optimizerDepotColor(current.depot.id),
+            fillOpacity: 0.18,
+            interactive: false,
+          },
+        ).addTo(mapItem.layer);
+      }
+    }
+
+    function renderOptimizerAssignmentMap(data) {
+      clearOptimizerMap();
+      optimizerMapHeading.textContent = `${data.group_name} · ${data.output_path}`;
+      optimizerMapSummary.textContent =
+        `Loaded jobs: ${data.jobs.length} · unchanged: ${data.unchanged_count} · changed: ${data.changed_count}`;
+      const gapPercent = Math.max(0, Math.min(100, Number(data.distance_percent) || 0));
+      const gapStart = formatDistancePercent(50 - gapPercent / 2);
+      const gapEnd = formatDistancePercent(50 + gapPercent / 2);
+      optimizerMapSummary.textContent +=
+        ` · uncolored depot gap: ${gapStart}%–${gapEnd}% (Distance ${gapPercent}%)`;
+      optimizerMapMessage.textContent = data.jobs.length
+        ? '' : 'No handled jobs with map coordinates were found.';
+      optimizerMapMessage.classList.remove('file-error');
+      const depotIds = [...new Set(data.jobs.map(job => job.original_depot))];
+      const colorDepotIds = [...new Set([
+        ...data.depots.map(depot => depot.id),
+        ...data.jobs.map(job => job.original_depot),
+        ...data.jobs.map(job => job.output_depot),
+      ])];
+      const palette = [
+        '#2563eb', '#16a34a', '#9333ea', '#0891b2', '#ca8a04',
+        '#4f46e5', '#0d9488', '#c026d3', '#65a30d', '#0284c7',
+      ];
+      optimizerDepotColors = new Map(colorDepotIds.map((depotId, index) => [
+        String(depotId),
+        palette[index] || `hsl(${(index * 137.508 + 35) % 360} 72% 43%)`,
+      ]));
+      if (!ensureOptimizerMap()) return;
+
+      for (const depotId of depotIds) {
+        optimizerMapLayers.set(String(depotId), {
+          layer: L.layerGroup(), coordinates: [],
+        });
+      }
+      if (data.changed_count) {
+        for (const depotId of new Set(
+          data.jobs.filter(job => job.changed).map(job => job.original_depot)
+        )) {
+          optimizerMapLayers.set(`__changed__:${depotId}`, {
+            layer: L.layerGroup(), coordinates: [],
+          });
+        }
+      }
+      addOptimizerDepotHues(data.depots, Number(data.distance_percent) || 0);
+      for (const depot of data.depots) {
+        const mapItem = optimizerMapLayers.get(String(depot.id));
+        if (!mapItem) continue;
+        const markerBody = document.createElement('span');
+        markerBody.className = 'optimizer-depot-marker';
+        markerBody.style.setProperty('--depot-color', optimizerDepotColor(depot.id));
+        markerBody.textContent = 'D';
+        const icon = L.divIcon({
+          className: 'optimizer-depot-icon', html: markerBody,
+          iconSize: [28, 28], iconAnchor: [14, 14],
+        });
+        const popup = document.createElement('strong');
+        popup.textContent = `Depot ${depot.id}`;
+        L.marker([depot.lat, depot.lon], {icon, zIndexOffset: 500})
+          .bindPopup(popup).addTo(mapItem.layer);
+        mapItem.coordinates.push([depot.lat, depot.lon]);
+      }
+      for (const job of data.jobs) {
+        const layerKey = job.changed
+          ? `__changed__:${job.original_depot}` : String(job.original_depot);
+        const mapItem = optimizerMapLayers.get(layerKey);
+        if (!mapItem) continue;
+        const color = job.changed ? '#dc2626' : optimizerDepotColor(job.original_depot);
+        const markerBody = document.createElement('span');
+        markerBody.className = 'optimizer-job-marker';
+        markerBody.style.setProperty('--job-color', color);
+        if (job.changed) {
+          markerBody.classList.add('changed-depot');
+          markerBody.style.setProperty(
+            '--depot-color', optimizerDepotColor(job.output_depot),
+          );
+          markerBody.style.setProperty('--changed-color', '#dc2626');
+        }
+        markerBody.textContent = job.job_id;
+        const icon = L.divIcon({
+          className: 'optimizer-job-icon', html: markerBody,
+          iconSize: [22, 22], iconAnchor: [11, 11],
+        });
+        L.marker([job.lat, job.lon], {icon})
+          .bindPopup(optimizerMapPopup(job)).addTo(mapItem.layer);
+        mapItem.coordinates.push([job.lat, job.lon]);
+      }
+      for (const depotId of depotIds) {
+        addOptimizerLegend(
+          String(depotId), optimizerDepotColor(depotId), `Depot ${depotId}`,
+        );
+      }
+      if (data.changed_count) {
+        addOptimizerLegend('__changed__', '#dc2626', 'Depot changed');
+      }
+      updateOptimizerMapVisibility();
+    }
+
+    async function loadOptimizerMap() {
+      const group = selectedGroup();
+      const output = optimizerMapOutput.value;
+      clearOptimizerMap();
+      if (!group || !output) {
+        syncOptimizerMapOutputs();
+        return;
+      }
+      optimizerMapRefresh.disabled = true;
+      optimizerMapMessage.textContent = 'Loading job depot assignments...';
+      optimizerMapMessage.classList.remove('file-error');
+      try {
+        const query = new URLSearchParams({group: group.id, output});
+        renderOptimizerAssignmentMap(await fetchJson(`/api/optimizer/map?${query}`));
+      } catch (error) {
+        optimizerMapMessage.textContent = error.message;
+        optimizerMapMessage.classList.add('file-error');
+      } finally {
+        optimizerMapRefresh.disabled = false;
+      }
+    }
+
+    optimizerMapOutput.addEventListener('change', loadOptimizerMap);
+    optimizerMapRefresh.addEventListener('click', async () => {
+      await loadOptimizerGroups();
+      await loadOptimizerMap();
+    });
+    document.querySelector('[data-optimizer-tab="optimizer-map-page"]')
+      .addEventListener('click', () => {
+        window.requestAnimationFrame(() => {
+          if (ensureOptimizerMap()) optimizerMap.invalidateSize();
+          loadOptimizerMap();
+        });
+      });
     refreshFilesButton.addEventListener('click', () => {
       openOptimizerGroups.clear();
       openOptimizerSections.clear();

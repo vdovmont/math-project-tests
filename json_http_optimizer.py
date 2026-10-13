@@ -68,6 +68,94 @@ def run_optimization(input_json, base_url, *, on_query=None, on_progress=None):
         time.sleep(STATE_POLL_INTERVAL_SECONDS)
 
 
+def normalized_id(value):
+    if isinstance(value, bool) or value is None:
+        return None
+    text = str(value)
+    if text.isdigit():
+        return text.lstrip("0") or "0"
+    return text
+
+
+def build_assignment_map(merged_input, output_json):
+    if not isinstance(merged_input, dict) or not isinstance(output_json, dict):
+        raise ValueError("Map input and output must be JSON objects.")
+    solutions = output_json.get("solutions")
+    if not isinstance(solutions, list) or not solutions or not isinstance(solutions[0], dict):
+        raise ValueError("Output JSON has no completed solution.")
+    routes = solutions[0].get("routes")
+    if not isinstance(routes, list):
+        raise ValueError("Output solution has no routes list.")
+
+    points = {}
+    for point in merged_input.get("points", []):
+        if not isinstance(point, dict):
+            continue
+        point_id = normalized_id(point.get("id"))
+        lat, lon = point.get("lat"), point.get("lon")
+        if point_id is not None and isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+            points[point_id] = {"lat": float(lat), "lon": float(lon)}
+
+    input_jobs = {}
+    for job in merged_input.get("jobList", []):
+        if not isinstance(job, dict):
+            continue
+        job_id = normalized_id(job.get("id"))
+        if job_id is not None:
+            input_jobs[job_id] = job
+
+    jobs = []
+    seen_jobs = set()
+    for route in routes:
+        if not isinstance(route, dict) or not isinstance(route.get("deliveries"), list):
+            continue
+        for delivery in route["deliveries"]:
+            if not isinstance(delivery, dict) or "depot" not in delivery:
+                continue
+            job_id = normalized_id(delivery.get("jobID"))
+            job = input_jobs.get(job_id)
+            if job is None or job_id in seen_jobs:
+                continue
+            point_id = normalized_id(job.get("point"))
+            point = points.get(point_id)
+            if point is None:
+                continue
+            original_depot = job.get("depotID")
+            output_depot = delivery.get("depot")
+            jobs.append({
+                "job_id": str(job.get("id")),
+                "point_id": str(job.get("point")),
+                "lat": point["lat"],
+                "lon": point["lon"],
+                "original_depot": str(original_depot),
+                "output_depot": str(output_depot),
+                "changed": normalized_id(original_depot) != normalized_id(output_depot),
+            })
+            seen_jobs.add(job_id)
+
+    depots = []
+    for depot in merged_input.get("depotList", []):
+        if not isinstance(depot, dict):
+            continue
+        point = points.get(normalized_id(depot.get("point")))
+        if point is not None:
+            depots.append({
+                "id": str(depot.get("id")),
+                "lat": point["lat"],
+                "lon": point["lon"],
+            })
+    return {
+        "jobs": jobs,
+        "depots": depots,
+        "changed_count": sum(1 for job in jobs if job["changed"]),
+        "unchanged_count": sum(1 for job in jobs if not job["changed"]),
+        "distance_percent": (
+            merged_input.get("options", {}).get("optimize_jobs_between_depots_distance", 0)
+            if isinstance(merged_input.get("options"), dict) else 0
+        ),
+    }
+
+
 def validate_options(data):
     if not isinstance(data, dict):
         raise ValueError("Options must be a JSON object.")

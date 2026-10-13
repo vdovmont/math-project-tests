@@ -3196,9 +3196,15 @@
       distanceSlider.value = String(value);
       distanceBand.style.left = `${lower}%`;
       distanceBand.style.width = `${value}%`;
-      distanceRangeText.textContent =
-        `Covers ${formatDistancePercent(lower)}%–${formatDistancePercent(upper)}% `
-        + 'of the distance between depots.';
+      if (value === 0) {
+        distanceRangeText.textContent = 'Covers 0% of the distance between depots.';
+      } else if (value === 100) {
+        distanceRangeText.textContent = 'Covers 100% of the distance between depots.';
+      } else {
+        distanceRangeText.textContent =
+          `Covers ${formatDistancePercent(lower)}%–${formatDistancePercent(upper)}% `
+          + 'of the distance between depots.';
+      }
     }
 
     function clampDistanceInput() {

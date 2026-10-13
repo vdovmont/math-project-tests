@@ -126,7 +126,8 @@ The page has two general tabs: **Tester** and **Optimizer**. Tester contains
 Optimizer contains **Runner** and **JSON files** and remembers its selected
 sub-tab while switching tools. Its Runner has independent saved profiles,
 Base URL, and Distance (%) from 0 through 100, including decimals (default 0).
-Optimizer profiles are stored in `Settings/.json_http_optimizer_gui_profiles.json`.
+Optimizer profiles are stored in `Settings/optimizer_profiles.json`. Their saved
+Base URL selection uses the same `Settings/urls.json` entries as Tester.
 Its console is separate from Tester output. Processing is not implemented yet,
 so Start and Previous remain disabled. Add files, Remove files, and Refresh are
 also disabled for now; future uploads will accept only `*-input.json` files.

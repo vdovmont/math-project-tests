@@ -5,6 +5,7 @@ import threading
 from http import HTTPStatus
 
 import json_http_optimizer as optimizer
+import gui_tester
 
 from config import (
     PROFILE_FILE,
@@ -45,15 +46,40 @@ def load_profiles():
             if name.casefold() in names:
                 raise ValueError("Duplicate profile names.")
             names.add(name.casefold())
-            result[name] = optimizer.validate_options(options)
+            result[name] = validate_profile_options(options)
         return result
     except ValueError as error:
         raise OSError(f"Could not load Optimizer profiles: {error}") from error
 
 
+def validate_profile_options(options):
+    profile = optimizer.validate_options(options)
+    saved_url_name = options.get("saved_url_name") if isinstance(options, dict) else None
+    profile["saved_url_name"] = (
+        saved_url_name if isinstance(saved_url_name, str) and saved_url_name else None
+    )
+    return profile
+
+
 def config():
-    return {"default": {"base_url": optimizer.BASE_URL, "distance_percent": optimizer.DISTANCE_PERCENT},
-            "previous": None, "previous_profile": None, "profiles": load_profiles()}
+    urls_error = None
+    try:
+        saved_urls = gui_tester.load_saved_urls()
+    except gui_tester.UrlStorageError as error:
+        saved_urls = {}
+        urls_error = str(error)
+    return {
+        "default": {
+            "base_url": optimizer.BASE_URL,
+            "distance_percent": optimizer.DISTANCE_PERCENT,
+            "saved_url_name": None,
+        },
+        "previous": None,
+        "previous_profile": None,
+        "profiles": load_profiles(),
+        "saved_urls": saved_urls,
+        "urls_error": urls_error,
+    }
 
 
 def update_profile(data, *, delete=False):
@@ -73,7 +99,7 @@ def update_profile(data, *, delete=False):
                 raise ValueError("A profile with this name already exists.")
             if len(profiles) >= MAX_SAVED_PROFILES:
                 raise ValueError(f"At most {MAX_SAVED_PROFILES} profiles can be saved.")
-            profile = optimizer.validate_options(data.get("options"))
+            profile = validate_profile_options(data.get("options"))
             profiles[name] = profile
         PROFILE_FILE.parent.mkdir(parents=True, exist_ok=True)
         temporary = PROFILE_FILE.with_suffix(".json.tmp")

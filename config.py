@@ -75,6 +75,6 @@ MAX_SAVED_PROFILES = 100
 # -----------------------------------------------------------------------------
 # gui_optimizer.py
 # -----------------------------------------------------------------------------
-PROFILE_FILE = SETTINGS_FOLDER / ".json_http_optimizer_gui_profiles.json"
+PROFILE_FILE = SETTINGS_FOLDER / "optimizer_profiles.json"
 OPTIMIZER_MAX_PROFILE_NAME_LENGTH = 80
 OPTIMIZER_MAX_SAVED_PROFILES = 100

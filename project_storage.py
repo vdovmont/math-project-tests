@@ -13,11 +13,12 @@ from config import (
     REFERENCE_PROFILES_FILE,
     ALLOWED_ERROR_PROFILES_FILE,
     TEST_SELECTION_FILE,
+    PROFILE_FILE,
 )
 
 
 def migrate_settings_filenames(root: Path) -> None:
-    """Add the tester_ prefix to Tester settings without overwriting files."""
+    """Rename current settings files without overwriting existing files."""
     root = root.resolve()
     settings_folder = root / SETTINGS_FOLDER.relative_to(PROJECT_FOLDER)
     renames = (
@@ -29,6 +30,8 @@ def migrate_settings_filenames(root: Path) -> None:
          root / ALLOWED_ERROR_PROFILES_FILE.relative_to(PROJECT_FOLDER)),
         (settings_folder / "test_selection.json",
          root / TEST_SELECTION_FILE.relative_to(PROJECT_FOLDER)),
+        (settings_folder / ".json_http_optimizer_gui_profiles.json",
+         root / PROFILE_FILE.relative_to(PROJECT_FOLDER)),
     )
 
     pending_renames = []

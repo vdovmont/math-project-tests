@@ -772,9 +772,19 @@
               <button id="optimizer-delete-profile" class="danger-button" type="button" disabled>Delete</button>
             </div>
           </div>
-          <label>Base URL
+          <p class="tolerance-title">Base URL</p>
+          <label aria-label="Base URL">
             <input id="optimizer-base-url" name="base_url" type="url" required>
           </label>
+          <div class="profile-manager">
+            <select id="optimizer-saved-url" aria-label="Saved Base URL">
+              <option value=""></option>
+            </select>
+            <div class="profile-buttons">
+              <button id="optimizer-save-url" class="add-button" type="button">Save</button>
+              <button id="optimizer-delete-url" class="danger-button" type="button" disabled>Delete</button>
+            </div>
+          </div>
           <div class="tolerance-grid">
             <label>Distance (%)
               <input name="distance_percent" type="number" min="0" max="100" step="any" value="0" required>
@@ -813,6 +823,47 @@
         <button id="optimizer-save-profile-confirm" class="add-button" type="submit">Save</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="optimizer-save-url-dialog" class="profile-dialog">
+    <form id="optimizer-save-url-form" class="dialog-body upload-form">
+      <h2>Save Base URL</h2>
+      <p>Enter a name for the current Base URL.</p>
+      <label>URL name
+        <input id="optimizer-save-url-name" type="text" maxlength="80" required autocomplete="off">
+      </label>
+      <p id="optimizer-save-url-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="optimizer-save-url-cancel" class="small-button" type="button">Cancel</button>
+        <button id="optimizer-save-url-confirm" class="add-button" type="submit">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="optimizer-select-delete-url-dialog" class="profile-dialog">
+    <form id="optimizer-select-delete-url-form" class="dialog-body upload-form">
+      <h2>Delete saved Base URL</h2>
+      <p>Select the saved Base URL you want to delete.</p>
+      <label>Base URL profile
+        <select id="optimizer-delete-url-select" required></select>
+      </label>
+      <div class="dialog-actions">
+        <button id="optimizer-select-delete-url-cancel" class="small-button" type="button">Cancel</button>
+        <button class="danger-button" type="submit">Continue</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="optimizer-delete-url-dialog" class="profile-dialog">
+    <div class="dialog-body">
+      <h2>Delete saved Base URL</h2>
+      <p>Delete "<strong id="optimizer-delete-url-name"></strong>"?</p>
+      <p id="optimizer-delete-url-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="optimizer-delete-url-cancel" class="small-button" type="button">Cancel</button>
+        <button id="optimizer-delete-url-confirm" class="danger-button" type="button">Delete</button>
+      </div>
+    </div>
   </dialog>
 
   <dialog id="optimizer-select-delete-profile-dialog" class="profile-dialog">
@@ -3017,13 +3068,34 @@
     const confirmDeleteProfileError = document.querySelector('#optimizer-confirm-delete-profile-error');
     const confirmDeleteProfileCancel = document.querySelector('#optimizer-confirm-delete-profile-cancel');
     const confirmDeleteProfileButton = document.querySelector('#optimizer-confirm-delete-profile');
+    const baseUrlInput = document.querySelector('#optimizer-base-url');
+    const savedUrlSelect = document.querySelector('#optimizer-saved-url');
+    const saveUrlButton = document.querySelector('#optimizer-save-url');
+    const deleteUrlButton = document.querySelector('#optimizer-delete-url');
+    const saveUrlDialog = document.querySelector('#optimizer-save-url-dialog');
+    const saveUrlForm = document.querySelector('#optimizer-save-url-form');
+    const saveUrlName = document.querySelector('#optimizer-save-url-name');
+    const saveUrlError = document.querySelector('#optimizer-save-url-error');
+    const saveUrlCancel = document.querySelector('#optimizer-save-url-cancel');
+    const saveUrlConfirm = document.querySelector('#optimizer-save-url-confirm');
+    const selectDeleteUrlDialog = document.querySelector('#optimizer-select-delete-url-dialog');
+    const selectDeleteUrlForm = document.querySelector('#optimizer-select-delete-url-form');
+    const deleteUrlSelect = document.querySelector('#optimizer-delete-url-select');
+    const selectDeleteUrlCancel = document.querySelector('#optimizer-select-delete-url-cancel');
+    const deleteUrlDialog = document.querySelector('#optimizer-delete-url-dialog');
+    const deleteUrlName = document.querySelector('#optimizer-delete-url-name');
+    const deleteUrlError = document.querySelector('#optimizer-delete-url-error');
+    const deleteUrlCancel = document.querySelector('#optimizer-delete-url-cancel');
+    const deleteUrlConfirm = document.querySelector('#optimizer-delete-url-confirm');
 
     const errorView = document.querySelector('#optimizer-error');
     let defaultOptions = null;
     let previousOptions = null;
     let previousProfileName = null;
     let savedProfiles = {};
+    let savedUrls = {};
     let pendingProfileDeletion = null;
+    let pendingUrlDeletion = null;
     const optionFieldNames = [
       'base_url',
       ...Array.from(toleranceInputs, input => input.name),
@@ -3037,11 +3109,17 @@
       }
       if (savedProfileName) savedProfileSelect.value = savedProfileName;
       else savedProfileSelect.selectedIndex = -1;
+      savedUrlSelect.value = Object.hasOwn(savedUrls, profile.saved_url_name)
+        ? profile.saved_url_name : '';
+      deleteUrlButton.disabled = Object.keys(savedUrls).length === 0;
       updateProfileButtons();
     }
 
     function currentOptionValues() {
-      return Object.fromEntries(new FormData(form).entries());
+      return {
+        ...Object.fromEntries(new FormData(form).entries()),
+        saved_url_name: savedUrlSelect.value || null,
+      };
     }
 
     function renderSavedProfiles(selectedName = '') {
@@ -3069,7 +3147,7 @@
         const value = form.elements.namedItem(name).value;
         if (name === 'base_url') return value === String(profile[name]);
         return value !== '' && Number(value) === Number(profile[name]);
-      });
+      }) && (profile.saved_url_name || '') === savedUrlSelect.value;
     }
 
     function updateProfileButtons() {
@@ -3080,6 +3158,100 @@
         ? 'Load the options used for the last optimizer run.'
         : 'No previous optimizer-run options have been saved yet.';
     }
+
+    function renderSavedUrls(selectedName = '') {
+      const empty = new Option('', '');
+      const names = Object.keys(savedUrls).sort((left, right) =>
+        left.localeCompare(right, undefined, {sensitivity: 'base'}));
+      savedUrlSelect.replaceChildren(
+        empty, ...names.map(name => new Option(name, name)));
+      savedUrlSelect.value = names.includes(selectedName) ? selectedName : '';
+      deleteUrlButton.disabled = names.length === 0;
+    }
+
+    baseUrlInput.addEventListener('input', () => {
+      if (savedUrlSelect.value) savedUrlSelect.value = '';
+      savedProfileSelect.selectedIndex = -1;
+      updateProfileButtons();
+    });
+    savedUrlSelect.addEventListener('change', () => {
+      const name = savedUrlSelect.value;
+      baseUrlInput.value = name ? savedUrls[name] : defaultOptions.base_url;
+      savedProfileSelect.selectedIndex = -1;
+      updateProfileButtons();
+    });
+    saveUrlButton.addEventListener('click', () => {
+      if (!baseUrlInput.reportValidity()) return;
+      saveUrlForm.reset();
+      saveUrlError.textContent = '';
+      saveUrlDialog.showModal();
+      requestAnimationFrame(() => saveUrlName.focus());
+    });
+    saveUrlCancel.addEventListener('click', () => saveUrlDialog.close());
+    saveUrlForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      saveUrlError.textContent = '';
+      saveUrlConfirm.disabled = true;
+      try {
+        const data = await fetchJson('/api/url/save', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name: saveUrlName.value, url: baseUrlInput.value}),
+        });
+        savedUrls = data.urls;
+        saveUrlDialog.close();
+        renderSavedUrls(data.name);
+        savedProfileSelect.selectedIndex = -1;
+        updateProfileButtons();
+      } catch (error) {
+        saveUrlError.textContent = error.message;
+      } finally {
+        saveUrlConfirm.disabled = false;
+      }
+    });
+    deleteUrlButton.addEventListener('click', () => {
+      const names = Object.keys(savedUrls).sort((left, right) =>
+        left.localeCompare(right, undefined, {sensitivity: 'base'}));
+      if (!names.length) return;
+      deleteUrlSelect.replaceChildren(...names.map(name => new Option(name, name)));
+      deleteUrlSelect.value = names.includes(savedUrlSelect.value)
+        ? savedUrlSelect.value : names[0];
+      selectDeleteUrlDialog.showModal();
+    });
+    selectDeleteUrlCancel.addEventListener('click', () =>
+      selectDeleteUrlDialog.close());
+    selectDeleteUrlForm.addEventListener('submit', event => {
+      event.preventDefault();
+      pendingUrlDeletion = deleteUrlSelect.value;
+      if (!pendingUrlDeletion) return;
+      selectDeleteUrlDialog.close();
+      deleteUrlName.textContent = pendingUrlDeletion;
+      deleteUrlError.textContent = '';
+      deleteUrlDialog.showModal();
+    });
+    deleteUrlCancel.addEventListener('click', () => {
+      pendingUrlDeletion = null;
+      deleteUrlDialog.close();
+    });
+    deleteUrlConfirm.addEventListener('click', async () => {
+      if (!pendingUrlDeletion) return;
+      deleteUrlConfirm.disabled = true;
+      try {
+        const data = await fetchJson('/api/url/delete', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name: pendingUrlDeletion}),
+        });
+        savedUrls = data.urls;
+        pendingUrlDeletion = null;
+        deleteUrlDialog.close();
+        renderSavedUrls();
+        savedProfileSelect.selectedIndex = -1;
+        updateProfileButtons();
+      } catch (error) {
+        deleteUrlError.textContent = error.message;
+      } finally {
+        deleteUrlConfirm.disabled = false;
+      }
+    });
 
     function closeSaveProfileDialog() {
       saveProfileDialog.close();
@@ -3218,12 +3390,15 @@
       previousOptions = config.previous;
       previousProfileName = config.previous_profile;
       savedProfiles = config.profiles || {};
+      savedUrls = config.saved_urls || {};
       renderSavedProfiles();
+      renderSavedUrls();
       applyOptionProfile(
         previousOptions || defaultOptions,
         previousOptions ? previousProfileName || '' : '',
       );
       if (config.profiles_error) errorView.textContent = config.profiles_error;
+      if (config.urls_error) errorView.textContent = config.urls_error;
     }
 
 

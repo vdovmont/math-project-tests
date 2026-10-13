@@ -596,6 +596,7 @@
     .optimizer-map-controls label { margin-bottom: 10px; }
     .optimizer-map-controls select { margin-top: 6px; }
     .optimizer-map-summary { margin: 14px 0; color: var(--muted); font-size: 12px; }
+    .optimizer-map-toggle-all { margin: 0 0 12px; }
     .optimizer-map-legend { display: grid; gap: 8px; }
     .optimizer-map-legend-item {
       display: flex;
@@ -1105,6 +1106,7 @@
                 <select id="optimizer-map-output"></select>
               </label>
               <div id="optimizer-map-summary" class="optimizer-map-summary"></div>
+              <button id="optimizer-map-toggle-all" class="small-button optimizer-map-toggle-all" type="button" disabled>Toggle all</button>
               <div id="optimizer-map-legend" class="optimizer-map-legend"></div>
               <div id="optimizer-map-message" class="map-message"></div>
             </div>
@@ -3418,6 +3420,7 @@
     const optimizerMapOutput = document.querySelector('#optimizer-map-output');
     const optimizerMapHeading = document.querySelector('#optimizer-map-heading');
     const optimizerMapSummary = document.querySelector('#optimizer-map-summary');
+    const optimizerMapToggleAll = document.querySelector('#optimizer-map-toggle-all');
     const optimizerMapLegend = document.querySelector('#optimizer-map-legend');
     const optimizerMapMessage = document.querySelector('#optimizer-map-message');
     const optimizerMapRefresh = document.querySelector('#optimizer-map-refresh');
@@ -4239,6 +4242,7 @@
       optimizerMapLayers.clear();
       optimizerMapToggleStates.clear();
       optimizerMapSummary.textContent = '';
+      optimizerMapToggleAll.disabled = true;
       optimizerMapLegend.replaceChildren();
     }
 
@@ -4313,6 +4317,7 @@
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = true;
+      checkbox.dataset.mapToggleKey = key;
       optimizerMapToggleStates.set(key, true);
       const swatch = document.createElement('span');
       swatch.className = 'optimizer-map-swatch';
@@ -4326,7 +4331,21 @@
       });
       item.append(checkbox, swatch, label);
       optimizerMapLegend.append(item);
+      optimizerMapToggleAll.disabled = false;
     }
+
+    optimizerMapToggleAll.addEventListener('click', () => {
+      const toggles = [...optimizerMapLegend.querySelectorAll(
+        'input[data-map-toggle-key]'
+      )];
+      if (!toggles.length) return;
+      const selectAll = !toggles.every(toggle => toggle.checked);
+      for (const toggle of toggles) {
+        toggle.checked = selectAll;
+        optimizerMapToggleStates.set(toggle.dataset.mapToggleKey, selectAll);
+      }
+      updateOptimizerMapVisibility();
+    });
 
     function clippedOptimizerHue(polygon, depotPoint, otherPoint, coverageFraction) {
       const direction = otherPoint.subtract(depotPoint);

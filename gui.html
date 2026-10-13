@@ -4293,12 +4293,14 @@
 
     function updateOptimizerMapVisibility() {
       if (!optimizerMap) return;
+      const anyDepotSelected = [...optimizerMapToggleStates.entries()]
+        .some(([key, enabled]) => key !== '__changed__' && enabled !== false);
       for (const [key, mapItem] of optimizerMapLayers) {
         let visible;
         if (key.startsWith('__changed__:')) {
           const depotId = key.slice('__changed__:'.length);
           visible = optimizerMapToggleStates.get('__changed__') !== false
-            || optimizerMapToggleStates.get(depotId) !== false;
+            && (!anyDepotSelected || optimizerMapToggleStates.get(depotId) !== false);
         } else {
           visible = optimizerMapToggleStates.get(key) !== false;
         }

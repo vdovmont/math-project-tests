@@ -17,19 +17,19 @@ from config import (
 
 
 def migrate_settings_filenames(root: Path) -> None:
-    """Rename prefixed Tester settings files without overwriting existing files."""
+    """Add the tester_ prefix to Tester settings without overwriting files."""
     root = root.resolve()
     settings_folder = root / SETTINGS_FOLDER.relative_to(PROJECT_FOLDER)
     renames = (
-        (settings_folder / ".json_http_tester_gui_profiles.json",
+        (settings_folder / "profiles.json",
          root / SAVED_PROFILES_FILE.relative_to(PROJECT_FOLDER)),
-        (settings_folder / ".json_http_tester_gui_urls.json",
+        (settings_folder / "urls.json",
          root / SAVED_URLS_FILE.relative_to(PROJECT_FOLDER)),
-        (settings_folder / ".json_http_tester_gui_reference_profiles.json",
+        (settings_folder / "reference_profiles.json",
          root / REFERENCE_PROFILES_FILE.relative_to(PROJECT_FOLDER)),
-        (settings_folder / ".json_http_tester_gui_allowed_error_profiles.json",
+        (settings_folder / "allowed_error_profiles.json",
          root / ALLOWED_ERROR_PROFILES_FILE.relative_to(PROJECT_FOLDER)),
-        (settings_folder / ".json_http_tester_gui_test_selection.json",
+        (settings_folder / "test_selection.json",
          root / TEST_SELECTION_FILE.relative_to(PROJECT_FOLDER)),
     )
 

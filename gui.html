@@ -4016,7 +4016,11 @@
         });
         row.append(name, toggle);
         summary.append(row);
-        const merged = [group.merged, group.merge_report].filter(Boolean);
+        const merged = [
+          group.merged,
+          group.merge_report,
+          ...(group.merged_snapshots || []),
+        ].filter(Boolean);
         const sections = document.createElement('div');
         sections.className = 'json-file-items';
         sections.append(
@@ -4030,7 +4034,8 @@
       const hasGroups = optimizerGroups.length > 0;
       addInitialButton.disabled = !hasGroups;
       deleteFilesButton.disabled = !optimizerGroups.some(group =>
-        group.initial.length || group.merged || group.merge_report || group.outputs.length);
+        group.initial.length || group.merged || group.merge_report
+        || group.merged_snapshots?.length || group.outputs.length);
       deleteGroupButton.disabled = !hasGroups;
       updateOptimizerRunButton();
       syncOptimizerMapOutputs();
@@ -4344,7 +4349,7 @@
       if (optimizerMapGroupId) optimizerMapGroup.value = optimizerMapGroupId;
       optimizerMapGroup.disabled = !optimizerGroups.length;
       const group = selectedOptimizerMapGroup();
-      const outputs = [...(group?.outputs || [])].reverse();
+      const outputs = [...(group?.outputs || [])];
       optimizerMapOutput.replaceChildren(...outputs.map(file =>
         new Option(file.path, file.path)));
       if (!selectLatest && outputs.some(file => file.path === previous)) {
@@ -4754,6 +4759,8 @@
       const entries = [
         ...group.initial.map(file => ({...file, category: 'initial', label: `Initial / ${file.path}`})),
         ...(group.merged ? [{...group.merged, category: 'merged', label: `Merged input / ${group.merged.path}`}] : []),
+        ...(group.merged_snapshots || []).map(file =>
+          ({...file, category: 'merged', label: `Merged input / ${file.path}`})),
         ...(group.merge_report ? [{...group.merge_report, category: 'merged', label: `Merged input / ${group.merge_report.path}`}] : []),
         ...group.outputs.map(file => ({...file, category: 'outputs', label: `Output / ${file.path}`})),
       ];

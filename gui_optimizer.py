@@ -125,12 +125,20 @@ class OptimizerRunState:
             outputs = folder / "outputs"
             outputs.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            output_file = outputs / f"optimization-{timestamp}-output.json"
+            output_file = outputs / f"{timestamp}-output.json"
             output_file.write_text(
                 json.dumps(output, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
+            merged_snapshot = folder / "merged" / output_file.name.removesuffix(
+                "-output.json"
+            )
+            merged_snapshot = merged_snapshot.with_name(
+                f"{merged_snapshot.name}-input.json"
+            )
+            shutil.copy2(folder / "merged" / "merged-input.json", merged_snapshot)
             self.append_log(f"Saved result: {output_file.name}")
+            self.append_log(f"Saved merged input snapshot: {merged_snapshot.name}")
             with self.lock:
                 self.result_file = {
                     "group_id": folder.name,
@@ -542,6 +550,15 @@ def optimizer_groups() -> dict[str, object]:
                  "size": merge_report_file.stat().st_size}
                 if merge_report_file.is_file() else None
             )
+            merged_snapshots = sorted(
+                (
+                    {"name": file.name, "path": file.name, "size": file.stat().st_size}
+                    for file in (folder / "merged").glob("*-input.json")
+                    if file.is_file() and file.name != "merged-input.json"
+                ),
+                key=lambda item: item["path"].casefold(),
+                reverse=True,
+            )
             merged_distance_percent = None
             if merged:
                 try:
@@ -562,12 +579,14 @@ def optimizer_groups() -> dict[str, object]:
                     if file.is_file()
                 ),
                 key=lambda item: item["path"].casefold(),
+                reverse=True,
             )
             groups.append({
                 **manifest,
                 "initial": initial,
                 "merged": merged,
                 "merge_report": merge_report,
+                "merged_snapshots": merged_snapshots,
                 "merged_distance_percent": merged_distance_percent,
                 "outputs": outputs,
                 "merge_blocked": (
@@ -812,8 +831,13 @@ def optimizer_map(group_id: object, output_path: object) -> dict[str, object]:
     folder = group_folder(group_id)
     if not isinstance(output_path, str) or not output_path:
         raise ValueError("Select an Optimizer output JSON.")
-    merged_file = folder / "merged" / "merged-input.json"
     output_file = safe_category_file(folder.name, "outputs", output_path)
+    merged_snapshot = folder / "merged" / output_file.name.removesuffix("-output.json")
+    merged_snapshot = merged_snapshot.with_name(f"{merged_snapshot.name}-input.json")
+    merged_file = (
+        merged_snapshot if merged_snapshot.is_file()
+        else folder / "merged" / "merged-input.json"
+    )
     if output_file.suffix.lower() != ".json":
         raise ValueError("Optimizer map output must be a JSON file.")
     if not merged_file.is_file():

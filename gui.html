@@ -61,6 +61,7 @@
     }
 
     .status.running { color: var(--running); border-color: #806b35; }
+    .status.warning { color: var(--running); border-color: #806b35; }
     .status.success { color: var(--accent); border-color: #2c765f; }
     .status.failed { color: var(--danger); border-color: #793b49; }
 
@@ -4182,7 +4183,8 @@
         lastOptimizerResultFile = null;
         optimizerOpenResult.disabled = true;
         if (data.merge_status === 'done') {
-          optimizerStatus.className = 'status success';
+          optimizerStatus.className = data.warning_count
+            ? 'status warning' : 'status success';
           optimizerStatus.textContent = data.warning_count
             ? `Done (${data.warning_count} warnings)` : 'Done';
         } else {

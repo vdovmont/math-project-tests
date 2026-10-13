@@ -4275,8 +4275,8 @@
       const details = document.createElement('div');
       details.style.whiteSpace = 'pre-line';
       details.textContent = job.changed
-        ? `Original depot: ${job.original_depot}\nOutput depot: ${job.output_depot}\nDepot changed`
-        : `Depot: ${job.original_depot}\nDepot unchanged`;
+        ? `Original depot: ${job.original_depot}\nOutput depot: ${job.output_depot}`
+        : `Depot: ${job.original_depot}`;
       content.append(title, details);
       return content;
     }

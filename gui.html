@@ -972,6 +972,7 @@
             <button id="optimizer-run-button" class="run-button optimizer-merge-button" type="button" disabled>Create new group and add JSONs in it</button>
           </div>
           <div class="console-actions">
+            <button id="optimizer-show-live-output" class="small-button" type="button" disabled>Show live output</button>
             <div id="optimizer-status" class="status">Idle</div>
             <button id="optimizer-open-result" class="small-button" type="button" disabled>Open result</button>
           </div>
@@ -3420,6 +3421,7 @@
     const optimizerRunButton = document.querySelector('#optimizer-run-button');
     const optimizerStatus = document.querySelector('#optimizer-status');
     const optimizerOpenResult = document.querySelector('#optimizer-open-result');
+    const optimizerShowLiveOutput = document.querySelector('#optimizer-show-live-output');
     const optimizerConsole = document.querySelector('#optimizer-console');
     const optimizerMapGroup = document.querySelector('#optimizer-map-group');
     const optimizerMapOutput = document.querySelector('#optimizer-map-output');
@@ -3452,6 +3454,8 @@
     let optimizerStatusPolling = false;
     let completedOptimizerRunId = 0;
     let optimizerStatusMode = 'idle';
+    let lastOptimizerLiveConsole = optimizerConsole.textContent;
+    let optimizerShowingGroupReport = false;
     let optimizerMap = null;
     const optimizerMapLayers = new Map();
     const optimizerMapToggleStates = new Map();
@@ -3853,8 +3857,22 @@
       if (optimizerGroups.some(group => group.id === preferredId)) select.value = preferredId;
     }
 
+    function setOptimizerLiveConsole(text) {
+      lastOptimizerLiveConsole = text;
+      if (!optimizerShowingGroupReport) optimizerConsole.textContent = text;
+    }
+
+    function showOptimizerLiveConsole() {
+      optimizerShowingGroupReport = false;
+      optimizerShowLiveOutput.disabled = true;
+      optimizerConsole.textContent = lastOptimizerLiveConsole;
+    }
+
+    optimizerShowLiveOutput.addEventListener('click', showOptimizerLiveConsole);
+
     async function showSelectedOptimizerMergeReport() {
-      if (optimizerRunRunning) return;
+      optimizerShowingGroupReport = true;
+      optimizerShowLiveOutput.disabled = false;
       const group = selectedGroup();
       const warningCount = Number(group?.last_merge_warning_count) || 0;
       const errorCount = Number(group?.last_merge_error_count) || 0;
@@ -3892,7 +3910,7 @@
           path: group.merge_report.path,
         });
         const data = await fetchJson(`/api/optimizer/file?${query}`);
-        if (!optimizerRunRunning && selectedOptimizerGroupId === requestedGroupId) {
+        if (optimizerShowingGroupReport && selectedOptimizerGroupId === requestedGroupId) {
           const reportLines = data.content.replace(/\r\n/g, '\n').split('\n');
           const warningsIndex = reportLines.findIndex(line => line.trim() === 'Warnings:');
           const emptyWarningsIndex = reportLines.findIndex(
@@ -3920,7 +3938,7 @@
             `${previousResult}${blockedNotice}\n\n${detailLines.join('\n')}`;
         }
       } catch (error) {
-        if (selectedOptimizerGroupId === requestedGroupId) {
+        if (optimizerShowingGroupReport && selectedOptimizerGroupId === requestedGroupId) {
           optimizerConsole.textContent = `Could not load merge report\n\n${error.message}`;
         }
       }
@@ -4154,6 +4172,7 @@
         Number(group.merged_distance_percent) === Number(distanceInput.value);
       if (mergeIsCurrent) {
         if (!baseUrlInput.reportValidity()) return;
+        showOptimizerLiveConsole();
         optimizerStatusMode = 'optimization';
         optimizerRunButton.disabled = true;
         optimizerOpenResult.disabled = true;
@@ -4179,18 +4198,21 @@
           optimizerStatusMode = 'merge';
           optimizerStatus.className = 'status failed';
           optimizerStatus.textContent = 'Failed';
-          optimizerConsole.textContent = `Could not start optimization\n\n${error.message}`;
+          setOptimizerLiveConsole(`Could not start optimization\n\n${error.message}`);
           errorView.textContent = error.message;
           optimizerRunRunning = false;
           updateOptimizerRunButton();
         }
         return;
       }
+      showOptimizerLiveConsole();
       optimizerStatusMode = 'merge';
       optimizerRunButton.disabled = true;
       optimizerStatus.className = 'status running';
       optimizerStatus.textContent = 'Merging';
-      optimizerConsole.textContent = `Merging ${group.initial.length} initial JSON file(s) from ${group.name}...`;
+      setOptimizerLiveConsole(
+        `Merging ${group.initial.length} initial JSON file(s) from ${group.name}...`,
+      );
       optimizerOpenResult.disabled = true;
       errorView.textContent = '';
       try {
@@ -4204,9 +4226,9 @@
         });
         optimizerGroups = data.groups;
         selectedOptimizerGroupId = data.selected_group_id;
-        optimizerConsole.textContent = data.merge_status === 'failed'
+        setOptimizerLiveConsole(data.merge_status === 'failed'
           ? `New merge blocked until the group inputs change. Fix the errors below before starting another merge.\n\n${data.report}`
-          : data.report;
+          : data.report);
         lastOptimizerResultFile = null;
         lastOptimizerResultHasZeroJobs = false;
         optimizerOpenResult.disabled = true;
@@ -4223,7 +4245,7 @@
       } catch (error) {
         optimizerStatus.className = 'status failed';
         optimizerStatus.textContent = 'Failed';
-        optimizerConsole.textContent = `Merge failed\n\n${error.message}`;
+        setOptimizerLiveConsole(`Merge failed\n\n${error.message}`);
         errorView.textContent = error.message;
         updateOptimizerRunButton();
       }
@@ -4280,9 +4302,9 @@
       const zeroJobsNotice = status.zero_jobs_result
         ? `RESULT HAS 0 JOBS TAKEN (0/${status.jobs_total ?? 0}).`
         : '';
-      optimizerConsole.textContent = zeroJobsNotice
+      setOptimizerLiveConsole(zeroJobsNotice
         ? `${logText}${logText ? '\n\n' : ''}${zeroJobsNotice}\n\nTime passed: ${elapsed}\n`
-        : `${logText}${logText ? '\n\n' : ''}Time passed: ${elapsed}\n`;
+        : `${logText}${logText ? '\n\n' : ''}Time passed: ${elapsed}\n`);
       if (status.result_file) {
         lastOptimizerResultFile = status.result_file;
         lastOptimizerResultHasZeroJobs = Boolean(status.zero_jobs_result);

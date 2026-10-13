@@ -923,7 +923,7 @@ def handle_post(request_path: str, data: object) -> tuple[object, int]:
     if request_path.startswith("/api/optimizer/profile/"):
         return update_profile(data, delete=request_path.endswith("/delete")), HTTPStatus.OK
     with RUN_STATE.lock:
-        if RUN_STATE.running:
+        if RUN_STATE.running and request_path != "/api/optimizer/group/select":
             raise RuntimeError(
                 "Wait for the current Optimizer run to finish before changing its group."
             )

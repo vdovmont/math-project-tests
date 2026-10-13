@@ -273,10 +273,16 @@ def duplicate_ids(entries):
 
 def merge_inputs(documents, distance_percent):
     """Return (merged document or None, report text, warning count, error count)."""
+    report = [
+        "Optimizer input merge report",
+        "",
+        f"Distance: {distance_percent:g}%",
+        "",
+    ]
     if not documents:
-        return None, "Merge failed\n\nNo initial JSON files were found.\n", 0, 1
+        report.extend(["Merge failed", "", "No initial JSON files were found."])
+        return None, "\n".join(report) + "\n", 0, 1
 
-    report = ["Optimizer input merge report", ""]
     if len(documents) >= 2:
         differences = find_value_differences(documents)
         if differences:

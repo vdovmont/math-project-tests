@@ -3892,11 +3892,24 @@
         });
         const data = await fetchJson(`/api/optimizer/file?${query}`);
         if (!optimizerRunRunning && selectedOptimizerGroupId === requestedGroupId) {
+          const reportLines = data.content.replace(/\r\n/g, '\n').split('\n');
+          const warningsIndex = reportLines.findIndex(line => line.trim() === 'Warnings:');
+          let detailLines;
+          if (warningsIndex >= 0) {
+            detailLines = reportLines.slice(warningsIndex);
+          } else {
+            const failedIndex = reportLines.findIndex(line => line.trim() === 'Merge failed');
+            detailLines = reportLines.slice(failedIndex >= 0 ? failedIndex + 1 : 0);
+            while (detailLines.length && !detailLines[0].trim()) detailLines.shift();
+          }
+          while (detailLines.length && !detailLines[detailLines.length - 1].trim()) {
+            detailLines.pop();
+          }
           const blockedNotice = group.merge_blocked
             ? '\n\nNew merge blocked: the input JSONs have not changed. Fix the errors below by changing the group inputs.'
             : '';
           optimizerConsole.textContent =
-            `${previousResult}${blockedNotice}\n\nPrevious merge report:\n${data.content}`;
+            `${previousResult}${blockedNotice}\n\n${detailLines.join('\n')}`;
         }
       } catch (error) {
         if (selectedOptimizerGroupId === requestedGroupId) {

@@ -23,8 +23,6 @@ def migrate_settings_filenames(root: Path) -> None:
     renames = (
         (settings_folder / "profiles.json",
          root / SAVED_PROFILES_FILE.relative_to(PROJECT_FOLDER)),
-        (settings_folder / "urls.json",
-         root / SAVED_URLS_FILE.relative_to(PROJECT_FOLDER)),
         (settings_folder / "reference_profiles.json",
          root / REFERENCE_PROFILES_FILE.relative_to(PROJECT_FOLDER)),
         (settings_folder / "allowed_error_profiles.json",

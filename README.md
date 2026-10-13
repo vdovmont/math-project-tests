@@ -47,7 +47,7 @@ The run button is directly beside the Live progress heading.
 
 Base URLs can be saved under a separate name using the selector and Save/Delete
 buttons below the URL field. They are stored independently in
-`Settings/tester_urls.json`. The selector starts blank and returns
+`Settings/urls.json`. The selector starts blank and returns
 to blank whenever the URL is edited or changed by an options profile. A saved
 name appears after selecting it directly from the URL list or immediately after
 saving the current URL under that name. Selecting the blank entry restores the

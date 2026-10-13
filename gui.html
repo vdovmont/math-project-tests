@@ -4426,9 +4426,15 @@
 
     function renderOptimizerAssignmentMap(data) {
       clearOptimizerMap();
+      const loadedJobCount = data.jobs.length;
+      const jobPercentage = count => loadedJobCount
+        ? Math.round((count / loadedJobCount) * 100)
+        : 0;
       optimizerMapHeading.textContent = `${data.group_name} · ${data.output_path}`;
       optimizerMapSummary.textContent =
-        `Loaded jobs: ${data.jobs.length} · unchanged: ${data.unchanged_count} · changed: ${data.changed_count}`;
+        `Loaded jobs: ${loadedJobCount}(${loadedJobCount ? 100 : 0}%) · `
+        + `unchanged: ${data.unchanged_count}(${jobPercentage(data.unchanged_count)}%) · `
+        + `changed: ${data.changed_count}(${jobPercentage(data.changed_count)}%)`;
       const gapPercent = Math.max(0, Math.min(100, Number(data.distance_percent) || 0));
       const gapStart = formatDistancePercent(50 - gapPercent / 2);
       const gapEnd = formatDistancePercent(50 + gapPercent / 2);

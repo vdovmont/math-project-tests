@@ -8,6 +8,7 @@ from config import (
     JSON_DATA_FOLDER,
     TEST_RESULTS_FOLDER,
     OPTIMIZER_DATA_FOLDER,
+    OPTIMIZER_GROUPS_FOLDER,
     SAVED_PROFILES_FILE,
     SAVED_URLS_FILE,
     REFERENCE_PROFILES_FILE,
@@ -60,6 +61,6 @@ def migrate_settings_filenames(root: Path) -> None:
 def prepare_storage(root: Path = PROJECT_FOLDER) -> None:
     """Ensure permanent storage directories exist."""
     for folder in (JSON_DATA_FOLDER, TEST_RESULTS_FOLDER,
-                   OPTIMIZER_DATA_FOLDER, SETTINGS_FOLDER):
+                   OPTIMIZER_DATA_FOLDER, OPTIMIZER_GROUPS_FOLDER, SETTINGS_FOLDER):
         (root / folder.relative_to(PROJECT_FOLDER)).mkdir(parents=True, exist_ok=True)
     migrate_settings_filenames(root)

@@ -19,6 +19,7 @@ JSON_DATA_ROOT = DATA_FOLDER / "tests" / "references"
 JSON_DATA_FOLDER = JSON_DATA_ROOT / "initial"
 TEST_RESULTS_FOLDER = DATA_FOLDER / "tests" / "test-results"
 OPTIMIZER_DATA_FOLDER = DATA_FOLDER / "optimizer"
+OPTIMIZER_GROUPS_FOLDER = OPTIMIZER_DATA_FOLDER / "groups"
 
 # -----------------------------------------------------------------------------
 # start.py
@@ -76,5 +77,7 @@ MAX_SAVED_PROFILES = 100
 # gui_optimizer.py
 # -----------------------------------------------------------------------------
 PROFILE_FILE = SETTINGS_FOLDER / "optimizer_profiles.json"
+OPTIMIZER_GROUP_SELECTION_FILE = SETTINGS_FOLDER / "optimizer_group_selection.json"
 OPTIMIZER_MAX_PROFILE_NAME_LENGTH = 80
 OPTIMIZER_MAX_SAVED_PROFILES = 100
+OPTIMIZER_MAX_GROUP_NAME_LENGTH = 80

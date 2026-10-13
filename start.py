@@ -69,8 +69,11 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
         except ValueError:
             self.send_json({"error": "Invalid Content-Length."}, HTTPStatus.BAD_REQUEST)
             return
-        max_body_size = (gui_tester.MAX_UPLOAD_REQUEST_BODY_BYTES
-                         if path == "/api/add-test-type" else MAX_REQUEST_BODY_BYTES)
+        max_body_size = (
+            gui_tester.MAX_UPLOAD_REQUEST_BODY_BYTES
+            if path in {"/api/add-test-type", "/api/optimizer/files/add"}
+            else MAX_REQUEST_BODY_BYTES
+        )
         if content_length <= 0 or content_length > max_body_size:
             self.send_json({"error": "Invalid request-body size."}, HTTPStatus.BAD_REQUEST)
             return

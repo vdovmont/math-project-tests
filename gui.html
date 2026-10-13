@@ -355,6 +355,7 @@
     .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .file-meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
     .empty-folder { padding: 24px; color: var(--muted); text-align: center; }
+    .optimizer-empty-folder { padding: 8px 14px; }
     .json-file-group { border-bottom: 1px solid var(--border); }
     .json-results-separator {
       height: 24px;
@@ -410,6 +411,16 @@
       border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
       color: var(--danger);
     }
+    .json-file-group.optimizer-group-unselected > summary {
+      background: color-mix(in srgb, var(--page) 62%, var(--panel));
+      color: var(--muted);
+    }
+    .json-file-group.optimizer-group-unselected .json-file-items { opacity: 0.48; }
+    .optimizer-select-toggle { min-width: 25px; min-height: 21px; justify-content: center; }
+    .optimizer-group-unselected .optimizer-select-toggle {
+      border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+      color: var(--danger);
+    }
     .test-run-toggle:has(input:disabled) { cursor: not-allowed; opacity: 0.55; }
     .test-run-toggle input:disabled { cursor: not-allowed; }
     .group-select { display: none; width: auto; margin: 0 8px 0 0; vertical-align: -1px; }
@@ -446,7 +457,7 @@
     .copy-file-button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
     .copy-file-button:disabled { cursor: default; opacity: .65; }
     .copy-file-button[hidden] { display: none; }
-    #file-content, #result-content {
+    #file-content, #result-content, #optimizer-file-content {
       height: 475px;
       margin: 0;
       padding: 18px;
@@ -456,6 +467,23 @@
       white-space: pre;
     }
     .file-error { color: var(--danger); }
+    .optimizer-delete-files-list {
+      max-height: 300px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--field);
+    }
+    .optimizer-delete-files-list label {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 500;
+    }
+    .optimizer-delete-files-list label:last-child { border-bottom: 0; }
+    .optimizer-delete-files-list input { width: auto; margin: 0; }
 
     .map-panel { overflow: hidden; }
     .map-toolbar {
@@ -975,18 +1003,107 @@
       <section id="optimizer-files-page" class="optimizer-page" hidden>
         <section class="panel files-panel">
           <div class="files-toolbar">
-            <h2>Input JSON files</h2>
+            <h2>Optimizer JSON groups</h2>
             <div class="console-actions">
-              <button class="add-button" type="button" disabled title="Not implemented yet">Add files</button>
-              <button class="danger-button" type="button" disabled title="Not implemented yet">Remove files</button>
-              <button class="small-button" type="button" disabled title="Not implemented yet">Refresh</button>
+              <button id="optimizer-new-group" class="add-button" type="button">New group</button>
+              <button id="optimizer-add-initial" class="add-button" type="button">Add initial JSONs</button>
+              <button id="optimizer-delete-files" class="danger-button" type="button">Delete JSONs</button>
+              <button id="optimizer-delete-group" class="danger-button" type="button">Delete group</button>
+              <button id="optimizer-files-refresh" class="small-button" type="button">Refresh</button>
             </div>
           </div>
-          <p>File management is not implemented yet. Only <code>*-input.json</code> files will be supported.</p>
+          <div class="file-browser">
+            <div id="optimizer-group-list" class="file-list"></div>
+            <section class="file-viewer">
+              <div class="file-viewer-header">
+                <span id="optimizer-file-title">Select a JSON file</span>
+                <span class="file-viewer-meta">
+                  <span id="optimizer-file-size"></span>
+                  <button id="optimizer-copy-file" class="copy-file-button" type="button" disabled>Copy</button>
+                </span>
+              </div>
+              <pre id="optimizer-file-content" class="file-content">No file selected.</pre>
+            </section>
+          </div>
         </section>
       </section>
     </div>
   </main>
+
+  <dialog id="optimizer-new-group-dialog" class="profile-dialog">
+    <form id="optimizer-new-group-form" class="dialog-body upload-form">
+      <h2>Create Optimizer group</h2>
+      <label>Group name
+        <input id="optimizer-new-group-name" type="text" maxlength="80" required autocomplete="off">
+      </label>
+      <p id="optimizer-new-group-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="optimizer-new-group-cancel" class="small-button" type="button">Cancel</button>
+        <button class="add-button" type="submit">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="optimizer-add-initial-dialog" class="profile-dialog">
+    <form id="optimizer-add-initial-form" class="dialog-body upload-form">
+      <h2>Add initial JSONs</h2>
+      <label>Group
+        <select id="optimizer-add-initial-group" required></select>
+      </label>
+      <label>Input JSON files
+        <input id="optimizer-add-initial-files" type="file" accept=".json,application/json" multiple required>
+      </label>
+      <p>Only files ending in <code>-input.json</code> are accepted.</p>
+      <p id="optimizer-add-initial-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="optimizer-add-initial-cancel" class="small-button" type="button">Cancel</button>
+        <button id="optimizer-add-initial-confirm" class="add-button" type="submit">Add files</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="optimizer-delete-group-dialog" class="profile-dialog">
+    <form id="optimizer-delete-group-form" class="dialog-body upload-form">
+      <h2>Delete Optimizer group</h2>
+      <label>Group
+        <select id="optimizer-delete-group-select" required></select>
+      </label>
+      <p>This deletes the group and every JSON file inside it.</p>
+      <p id="optimizer-delete-group-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="optimizer-delete-group-cancel" class="small-button" type="button">Cancel</button>
+        <button class="danger-button" type="submit">Delete</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="optimizer-delete-files-dialog" class="profile-dialog">
+    <form id="optimizer-delete-files-form" class="dialog-body upload-form">
+      <h2>Delete Optimizer JSONs</h2>
+      <label>Group
+        <select id="optimizer-delete-files-group" required></select>
+      </label>
+      <div id="optimizer-delete-files-list" class="optimizer-delete-files-list"></div>
+      <p id="optimizer-delete-files-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="optimizer-delete-files-cancel" class="small-button" type="button">Cancel</button>
+        <button id="optimizer-delete-files-confirm" class="danger-button" type="submit">Delete selected</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="optimizer-confirm-delete-files-dialog" class="profile-dialog">
+    <div class="dialog-body">
+      <h2>Confirm deletion</h2>
+      <p>Are you sure you want to delete these JSON files?</p>
+      <ul id="optimizer-confirm-delete-files-list" class="delete-list"></ul>
+      <p id="optimizer-confirm-delete-files-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="optimizer-confirm-delete-files-cancel" class="small-button" type="button">Cancel</button>
+        <button id="optimizer-confirm-delete-files" class="danger-button" type="button">Delete permanently</button>
+      </div>
+    </div>
+  </dialog>
 
   <dialog id="save-profile-dialog" class="profile-dialog">
     <form id="save-profile-form" class="dialog-body upload-form">
@@ -3170,6 +3287,45 @@
     const distanceSlider = document.querySelector('#optimizer-distance-slider');
     const distanceBand = document.querySelector('#optimizer-distance-band');
     const distanceRangeText = document.querySelector('#optimizer-distance-range-text');
+    const groupList = document.querySelector('#optimizer-group-list');
+    const newGroupButton = document.querySelector('#optimizer-new-group');
+    const addInitialButton = document.querySelector('#optimizer-add-initial');
+    const deleteFilesButton = document.querySelector('#optimizer-delete-files');
+    const deleteGroupButton = document.querySelector('#optimizer-delete-group');
+    const refreshFilesButton = document.querySelector('#optimizer-files-refresh');
+    const optimizerFileTitle = document.querySelector('#optimizer-file-title');
+    const optimizerFileSize = document.querySelector('#optimizer-file-size');
+    const optimizerFileContent = document.querySelector('#optimizer-file-content');
+    const optimizerCopyFile = document.querySelector('#optimizer-copy-file');
+    const newGroupDialog = document.querySelector('#optimizer-new-group-dialog');
+    const newGroupForm = document.querySelector('#optimizer-new-group-form');
+    const newGroupName = document.querySelector('#optimizer-new-group-name');
+    const newGroupError = document.querySelector('#optimizer-new-group-error');
+    const newGroupCancel = document.querySelector('#optimizer-new-group-cancel');
+    const addInitialDialog = document.querySelector('#optimizer-add-initial-dialog');
+    const addInitialForm = document.querySelector('#optimizer-add-initial-form');
+    const addInitialGroup = document.querySelector('#optimizer-add-initial-group');
+    const addInitialFiles = document.querySelector('#optimizer-add-initial-files');
+    const addInitialError = document.querySelector('#optimizer-add-initial-error');
+    const addInitialCancel = document.querySelector('#optimizer-add-initial-cancel');
+    const addInitialConfirm = document.querySelector('#optimizer-add-initial-confirm');
+    const deleteGroupDialog = document.querySelector('#optimizer-delete-group-dialog');
+    const deleteGroupForm = document.querySelector('#optimizer-delete-group-form');
+    const deleteGroupSelect = document.querySelector('#optimizer-delete-group-select');
+    const deleteGroupError = document.querySelector('#optimizer-delete-group-error');
+    const deleteGroupCancel = document.querySelector('#optimizer-delete-group-cancel');
+    const deleteFilesDialog = document.querySelector('#optimizer-delete-files-dialog');
+    const deleteFilesForm = document.querySelector('#optimizer-delete-files-form');
+    const deleteFilesGroup = document.querySelector('#optimizer-delete-files-group');
+    const deleteFilesList = document.querySelector('#optimizer-delete-files-list');
+    const deleteFilesError = document.querySelector('#optimizer-delete-files-error');
+    const deleteFilesCancel = document.querySelector('#optimizer-delete-files-cancel');
+    const deleteFilesConfirm = document.querySelector('#optimizer-delete-files-confirm');
+    const confirmDeleteFilesDialog = document.querySelector('#optimizer-confirm-delete-files-dialog');
+    const confirmDeleteFilesList = document.querySelector('#optimizer-confirm-delete-files-list');
+    const confirmDeleteFilesError = document.querySelector('#optimizer-confirm-delete-files-error');
+    const confirmDeleteFilesCancel = document.querySelector('#optimizer-confirm-delete-files-cancel');
+    const confirmDeleteFilesButton = document.querySelector('#optimizer-confirm-delete-files');
 
     const errorView = document.querySelector('#optimizer-error');
     let defaultOptions = null;
@@ -3179,6 +3335,12 @@
     let savedUrls = {};
     let pendingProfileDeletion = null;
     let pendingUrlDeletion = null;
+    let pendingOptimizerFilesDeletion = null;
+    let optimizerGroups = [];
+    let selectedOptimizerGroupId = null;
+    let activeOptimizerFile = null;
+    const openOptimizerGroups = new Set();
+    const openOptimizerSections = new Set();
     const optionFieldNames = [
       'base_url',
       ...Array.from(toleranceInputs, input => input.name),
@@ -3510,6 +3672,341 @@
       else applyOptionProfile(defaultOptions);
     });
 
+    function selectedGroup() {
+      return optimizerGroups.find(group => group.id === selectedOptimizerGroupId) || null;
+    }
+
+    function fillGroupSelect(select, preferredId = selectedOptimizerGroupId) {
+      select.replaceChildren(...optimizerGroups.map(group => new Option(group.name, group.id)));
+      if (optimizerGroups.some(group => group.id === preferredId)) select.value = preferredId;
+    }
+
+    function optimizerFileButton(group, category, file) {
+      const button = document.createElement('button');
+      button.className = 'file-item';
+      button.type = 'button';
+      button.dataset.groupId = group.id;
+      button.dataset.category = category;
+      button.dataset.path = file.path;
+      const name = document.createElement('span');
+      name.className = 'file-name';
+      name.textContent = file.path;
+      const meta = document.createElement('span');
+      meta.className = 'file-meta';
+      meta.textContent = formatBytes(file.size);
+      button.append(name, meta);
+      if (activeOptimizerFile && activeOptimizerFile.groupId === group.id &&
+          activeOptimizerFile.category === category && activeOptimizerFile.path === file.path) {
+        button.classList.add('active');
+      }
+      button.addEventListener('click', () => loadOptimizerFile(group.id, category, file.path));
+      return button;
+    }
+
+    function optimizerFileSection(group, title, category, files) {
+      const details = document.createElement('details');
+      details.className = 'json-file-subgroup';
+      const sectionKey = `${group.id}:${category}`;
+      details.open = openOptimizerSections.has(sectionKey);
+      details.addEventListener('toggle', () => {
+        if (details.open) openOptimizerSections.add(sectionKey);
+        else openOptimizerSections.delete(sectionKey);
+      });
+      const summary = document.createElement('summary');
+      summary.textContent = `${title} (${files.length})`;
+      const items = document.createElement('div');
+      items.className = 'json-file-items';
+      if (files.length) files.forEach(file => items.append(optimizerFileButton(group, category, file)));
+      else {
+        const empty = document.createElement('div');
+        empty.className = 'empty-folder optimizer-empty-folder';
+        empty.textContent = 'No JSON files';
+        items.append(empty);
+      }
+      details.append(summary, items);
+      return details;
+    }
+
+    function renderOptimizerGroups() {
+      groupList.replaceChildren();
+      if (!optimizerGroups.length) {
+        const empty = document.createElement('div');
+        empty.className = 'empty-folder';
+        empty.textContent = 'No Optimizer groups. Create one to add input JSONs.';
+        groupList.append(empty);
+      }
+      for (const group of optimizerGroups) {
+        const details = document.createElement('details');
+        details.className = 'json-file-group';
+        details.open = openOptimizerGroups.has(group.id);
+        details.addEventListener('toggle', () => {
+          if (details.open) openOptimizerGroups.add(group.id);
+          else openOptimizerGroups.delete(group.id);
+        });
+        if (group.id !== selectedOptimizerGroupId) details.classList.add('optimizer-group-unselected');
+        const summary = document.createElement('summary');
+        const row = document.createElement('span');
+        row.className = 'test-group-summary-content';
+        const name = document.createElement('span');
+        name.className = 'test-group-name';
+        name.textContent = group.name;
+        const toggle = document.createElement('label');
+        toggle.className = 'test-run-toggle optimizer-select-toggle';
+        toggle.title = group.id === selectedOptimizerGroupId
+          ? 'This group is selected.' : 'Select this group.';
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'optimizer-selected-group';
+        radio.checked = group.id === selectedOptimizerGroupId;
+        const state = document.createElement('span');
+        state.textContent = radio.checked ? 'Selected' : '';
+        toggle.append(radio, state);
+        toggle.addEventListener('click', event => event.stopPropagation());
+        radio.addEventListener('change', async () => {
+          if (!radio.checked) return;
+          try {
+            const data = await fetchJson('/api/optimizer/group/select', {
+              method: 'POST', headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({group_id: group.id}),
+            });
+            selectedOptimizerGroupId = data.selected_group_id;
+            renderOptimizerGroups();
+          } catch (error) {
+            errorView.textContent = error.message;
+            renderOptimizerGroups();
+          }
+        });
+        row.append(name, toggle);
+        summary.append(row);
+        const merged = group.merged ? [group.merged] : [];
+        const sections = document.createElement('div');
+        sections.className = 'json-file-items';
+        sections.append(
+          optimizerFileSection(group, 'Initial JSONs', 'initial', group.initial),
+          optimizerFileSection(group, 'Merged input', 'merged', merged),
+          optimizerFileSection(group, 'Output JSONs', 'outputs', group.outputs),
+        );
+        details.append(summary, sections);
+        groupList.append(details);
+      }
+      const hasGroups = optimizerGroups.length > 0;
+      addInitialButton.disabled = !hasGroups;
+      deleteFilesButton.disabled = !optimizerGroups.some(group =>
+        group.initial.length || group.merged || group.outputs.length);
+      deleteGroupButton.disabled = !hasGroups;
+    }
+
+    async function loadOptimizerGroups() {
+      const data = await fetchJson('/api/optimizer/groups');
+      optimizerGroups = data.groups || [];
+      selectedOptimizerGroupId = data.selected_group_id || null;
+      if (activeOptimizerFile && !optimizerGroups.some(group => group.id === activeOptimizerFile.groupId)) {
+        clearOptimizerFile();
+      }
+      renderOptimizerGroups();
+    }
+
+    function clearOptimizerFile() {
+      activeOptimizerFile = null;
+      optimizerFileTitle.textContent = 'Select a JSON file';
+      optimizerFileSize.textContent = '';
+      optimizerFileContent.textContent = 'No file selected.';
+      optimizerCopyFile.disabled = true;
+    }
+
+    async function loadOptimizerFile(groupId, category, path) {
+      try {
+        const query = new URLSearchParams({group: groupId, category, path});
+        const data = await fetchJson(`/api/optimizer/file?${query}`);
+        activeOptimizerFile = {groupId, category, path};
+        optimizerFileTitle.textContent = data.name;
+        optimizerFileSize.textContent = `${formatBytes(data.size)} · read only`;
+        optimizerFileContent.textContent = data.content;
+        optimizerCopyFile.disabled = false;
+        renderOptimizerGroups();
+      } catch (error) {
+        errorView.textContent = error.message;
+      }
+    }
+
+    optimizerCopyFile.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(optimizerFileContent.textContent);
+    });
+    refreshFilesButton.addEventListener('click', () => {
+      openOptimizerGroups.clear();
+      openOptimizerSections.clear();
+      loadOptimizerGroups().catch(error => { errorView.textContent = error.message; });
+    });
+
+    newGroupButton.addEventListener('click', () => {
+      newGroupForm.reset();
+      newGroupError.textContent = '';
+      newGroupDialog.showModal();
+      requestAnimationFrame(() => newGroupName.focus());
+    });
+    newGroupCancel.addEventListener('click', () => newGroupDialog.close());
+    newGroupForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      newGroupError.textContent = '';
+      try {
+        const data = await fetchJson('/api/optimizer/group/create', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name: newGroupName.value}),
+        });
+        optimizerGroups = data.groups;
+        selectedOptimizerGroupId = data.selected_group_id;
+        newGroupDialog.close();
+        renderOptimizerGroups();
+      } catch (error) { newGroupError.textContent = error.message; }
+    });
+
+    addInitialButton.addEventListener('click', () => {
+      addInitialForm.reset();
+      fillGroupSelect(addInitialGroup);
+      addInitialError.textContent = '';
+      addInitialDialog.showModal();
+    });
+    addInitialCancel.addEventListener('click', () => addInitialDialog.close());
+    addInitialForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const files = [...addInitialFiles.files];
+      const invalid = files.find(file => !file.name.endsWith('-input.json'));
+      if (invalid) {
+        addInitialError.textContent = `${invalid.name} must end in -input.json.`;
+        return;
+      }
+      addInitialConfirm.disabled = true;
+      addInitialError.textContent = '';
+      try {
+        const payload = await Promise.all(files.map(async file =>
+          ({name: file.name, content: await file.text()})));
+        const data = await fetchJson('/api/optimizer/files/add', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({group_id: addInitialGroup.value, files: payload}),
+        });
+        optimizerGroups = data.groups;
+        selectedOptimizerGroupId = data.selected_group_id;
+        addInitialDialog.close();
+        renderOptimizerGroups();
+      } catch (error) { addInitialError.textContent = error.message; }
+      finally { addInitialConfirm.disabled = false; }
+    });
+
+    deleteGroupButton.addEventListener('click', () => {
+      fillGroupSelect(deleteGroupSelect);
+      deleteGroupError.textContent = '';
+      deleteGroupDialog.showModal();
+    });
+    deleteGroupCancel.addEventListener('click', () => deleteGroupDialog.close());
+    deleteGroupForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      deleteGroupError.textContent = '';
+      try {
+        const data = await fetchJson('/api/optimizer/group/delete', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({group_id: deleteGroupSelect.value}),
+        });
+        optimizerGroups = data.groups;
+        selectedOptimizerGroupId = data.selected_group_id;
+        deleteGroupDialog.close();
+        clearOptimizerFile();
+        renderOptimizerGroups();
+      } catch (error) { deleteGroupError.textContent = error.message; }
+    });
+
+    function renderDeleteFileChoices() {
+      deleteFilesList.replaceChildren();
+      const group = optimizerGroups.find(item => item.id === deleteFilesGroup.value);
+      if (!group) return;
+      const entries = [
+        ...group.initial.map(file => ({...file, category: 'initial', label: `Initial / ${file.path}`})),
+        ...(group.merged ? [{...group.merged, category: 'merged', label: `Merged input / ${group.merged.path}`}] : []),
+        ...group.outputs.map(file => ({...file, category: 'outputs', label: `Output / ${file.path}`})),
+      ];
+      for (const file of entries) {
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = file.path;
+        checkbox.dataset.category = file.category;
+        checkbox.dataset.label = file.label;
+        label.append(checkbox, document.createTextNode(file.label));
+        deleteFilesList.append(label);
+      }
+      if (!entries.length) {
+        const empty = document.createElement('div');
+        empty.className = 'empty-folder';
+        empty.textContent = 'This group has no JSON files.';
+        deleteFilesList.append(empty);
+      }
+      deleteFilesConfirm.disabled = !entries.length;
+    }
+
+    deleteFilesButton.addEventListener('click', () => {
+      fillGroupSelect(deleteFilesGroup);
+      deleteFilesError.textContent = '';
+      renderDeleteFileChoices();
+      deleteFilesDialog.showModal();
+    });
+    deleteFilesGroup.addEventListener('change', renderDeleteFileChoices);
+    deleteFilesCancel.addEventListener('click', () => deleteFilesDialog.close());
+    deleteFilesForm.addEventListener('submit', event => {
+      event.preventDefault();
+      const selected = [...deleteFilesList.querySelectorAll('input:checked')];
+      const files = selected.map(input =>
+        ({category: input.dataset.category, path: input.value}));
+      if (!files.length) {
+        deleteFilesError.textContent = 'Select at least one JSON file.';
+        return;
+      }
+      deleteFilesError.textContent = '';
+      const group = optimizerGroups.find(item => item.id === deleteFilesGroup.value);
+      pendingOptimizerFilesDeletion = {
+        groupId: deleteFilesGroup.value,
+        files,
+      };
+      confirmDeleteFilesList.replaceChildren(...selected.map(input => {
+        const item = document.createElement('li');
+        item.textContent = `${group?.name || 'Group'} / ${input.dataset.label}`;
+        return item;
+      }));
+      confirmDeleteFilesError.textContent = '';
+      deleteFilesDialog.close();
+      confirmDeleteFilesDialog.showModal();
+    });
+
+    function closeConfirmDeleteFilesDialog() {
+      confirmDeleteFilesDialog.close();
+      confirmDeleteFilesError.textContent = '';
+      pendingOptimizerFilesDeletion = null;
+    }
+
+    confirmDeleteFilesCancel.addEventListener('click', closeConfirmDeleteFilesDialog);
+    confirmDeleteFilesDialog.addEventListener('cancel', () => {
+      confirmDeleteFilesError.textContent = '';
+      pendingOptimizerFilesDeletion = null;
+    });
+    confirmDeleteFilesButton.addEventListener('click', async () => {
+      if (!pendingOptimizerFilesDeletion) return;
+      confirmDeleteFilesButton.disabled = true;
+      confirmDeleteFilesError.textContent = '';
+      try {
+        const data = await fetchJson('/api/optimizer/files/delete', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            group_id: pendingOptimizerFilesDeletion.groupId,
+            files: pendingOptimizerFilesDeletion.files,
+          }),
+        });
+        optimizerGroups = data.groups;
+        selectedOptimizerGroupId = data.selected_group_id;
+        closeConfirmDeleteFilesDialog();
+        clearOptimizerFile();
+        renderOptimizerGroups();
+      } catch (error) { confirmDeleteFilesError.textContent = error.message; }
+      finally { confirmDeleteFilesButton.disabled = false; }
+    });
+
     async function loadDefaults() {
       const response = await fetch('/api/optimizer/config');
       const config = await response.json();
@@ -3531,7 +4028,8 @@
 
 
     form.addEventListener('submit', event => event.preventDefault());
-    loadDefaults().catch(error => { errorView.textContent = error.message; });
+    Promise.all([loadDefaults(), loadOptimizerGroups()])
+      .catch(error => { errorView.textContent = error.message; });
     })();
 
     document.querySelectorAll('[data-tool]').forEach(button => {

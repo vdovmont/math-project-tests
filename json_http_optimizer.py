@@ -163,15 +163,24 @@ def build_assignment_map(merged_input, output_json):
                 "lat": point["lat"],
                 "lon": point["lon"],
             })
+    output_state = output_json.get("state")
+    output_distance = (
+        output_state.get("optimize_jobs_between_depots_distance", 0)
+        if isinstance(output_state, dict) else 0
+    )
+    try:
+        output_distance = float(output_distance)
+    except (TypeError, ValueError):
+        output_distance = 0.0
+    if not math.isfinite(output_distance) or not 0 <= output_distance <= 100:
+        output_distance = 0.0
+
     return {
         "jobs": jobs,
         "depots": depots,
         "changed_count": sum(1 for job in jobs if job["changed"]),
         "unchanged_count": sum(1 for job in jobs if not job["changed"]),
-        "distance_percent": (
-            merged_input.get("options", {}).get("optimize_jobs_between_depots_distance", 0)
-            if isinstance(merged_input.get("options"), dict) else 0
-        ),
+        "distance_percent": output_distance,
     }
 
 

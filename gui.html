@@ -1076,6 +1076,120 @@
       margin: 0;
     }
 
+    .optimizer-jobs-table-panel {
+      margin-top: 20px;
+      overflow: hidden;
+    }
+
+    .optimizer-jobs-table-wrap {
+      height: 520px;
+      max-height: 520px;
+      overflow: auto;
+    }
+
+    .optimizer-jobs-table {
+      width: 100%;
+      min-width: 1010px;
+      table-layout: fixed;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .optimizer-jobs-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      padding: 0;
+      border-bottom: 1px solid var(--border);
+      background: var(--field);
+      text-align: left;
+    }
+
+    .optimizer-jobs-table th button {
+      width: 100%;
+      padding: 10px 12px;
+      border: 0;
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      font-weight: 800;
+      text-align: left;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .optimizer-jobs-table th button:hover {
+      color: var(--accent);
+    }
+
+    .optimizer-jobs-filter-row th {
+      position: sticky;
+      top: 39px;
+      padding: 7px 8px;
+    }
+
+    .optimizer-column-filter {
+      position: relative;
+    }
+
+    .optimizer-column-filter summary {
+      width: 100%;
+      padding: 7px 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--field);
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 500;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .optimizer-column-filter-options {
+      position: absolute;
+      z-index: 5;
+      top: calc(100% + 4px);
+      left: 0;
+      min-width: 100%;
+      max-height: 260px;
+      overflow: auto;
+      padding: 6px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--field);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, .4);
+    }
+
+    .optimizer-column-filter-options label {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: max-content;
+      padding: 5px 6px;
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .optimizer-column-filter-options input {
+      width: auto;
+      margin: 0;
+    }
+
+    .optimizer-jobs-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+      white-space: nowrap;
+    }
+
+    .optimizer-jobs-table-empty {
+      padding: 18px;
+      color: var(--muted);
+    }
+
     .optimizer-map-swatch {
       width: 18px;
       height: 18px;
@@ -1705,6 +1819,88 @@
               <div id="optimizer-map-message" class="map-message"></div>
             </div>
             <div id="optimizer-map" aria-label="Optimizer job depot assignment map"></div>
+          </div>
+        </section>
+        <section class="panel files-panel optimizer-jobs-table-panel">
+          <div class="map-toolbar">
+            <div>
+              <h2>Jobs</h2>
+              <span id="optimizer-jobs-table-summary" class="timing">No map output selected.</span>
+            </div>
+            <div class="console-actions">
+              <button id="optimizer-jobs-filter-toggle" class="small-button" type="button">Show filters</button>
+              <button id="optimizer-jobs-filter-clear" class="small-button" type="button">Clear filters</button>
+            </div>
+          </div>
+          <div class="optimizer-jobs-table-wrap">
+            <table class="optimizer-jobs-table">
+              <colgroup>
+                <col style="width: 120px">
+                <col style="width: 160px">
+                <col style="width: 120px">
+                <col style="width: 130px">
+                <col style="width: 130px">
+                <col style="width: 160px">
+                <col style="width: 190px">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th><button type="button" data-optimizer-job-sort="job_id">Job ID</button></th>
+                  <th><button type="button" data-optimizer-job-sort="job_extra_id">Job extraID</button></th>
+                  <th><button type="button" data-optimizer-job-sort="point_id">Job point</button></th>
+                  <th><button type="button" data-optimizer-job-sort="original_depot">Initial depot</button></th>
+                  <th><button type="button" data-optimizer-job-sort="output_depot">Current depot</button></th>
+                  <th><button type="button" data-optimizer-job-sort="transport_id">Transport ID</button></th>
+                  <th><button type="button" data-optimizer-job-sort="arrival">Arrival time</button></th>
+                </tr>
+                <tr id="optimizer-jobs-filter-row" class="optimizer-jobs-filter-row" hidden>
+                  <th>
+                    <details class="optimizer-column-filter" data-optimizer-job-filter="job_id">
+                      <summary>All values</summary>
+                      <div class="optimizer-column-filter-options"></div>
+                    </details>
+                  </th>
+                  <th>
+                    <details class="optimizer-column-filter" data-optimizer-job-filter="job_extra_id">
+                      <summary>All values</summary>
+                      <div class="optimizer-column-filter-options"></div>
+                    </details>
+                  </th>
+                  <th>
+                    <details class="optimizer-column-filter" data-optimizer-job-filter="point_id">
+                      <summary>All values</summary>
+                      <div class="optimizer-column-filter-options"></div>
+                    </details>
+                  </th>
+                  <th>
+                    <details class="optimizer-column-filter" data-optimizer-job-filter="original_depot">
+                      <summary>All values</summary>
+                      <div class="optimizer-column-filter-options"></div>
+                    </details>
+                  </th>
+                  <th>
+                    <details class="optimizer-column-filter" data-optimizer-job-filter="output_depot">
+                      <summary>All values</summary>
+                      <div class="optimizer-column-filter-options"></div>
+                    </details>
+                  </th>
+                  <th>
+                    <details class="optimizer-column-filter" data-optimizer-job-filter="transport_id">
+                      <summary>All values</summary>
+                      <div class="optimizer-column-filter-options"></div>
+                    </details>
+                  </th>
+                  <th>
+                    <details class="optimizer-column-filter" data-optimizer-job-filter="arrival">
+                      <summary>All values</summary>
+                      <div class="optimizer-column-filter-options"></div>
+                    </details>
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="optimizer-jobs-table-body"></tbody>
+            </table>
+            <div id="optimizer-jobs-table-empty" class="optimizer-jobs-table-empty">No jobs to display.</div>
           </div>
         </section>
       </section>
@@ -4029,6 +4225,14 @@
       const optimizerMapLegend = document.querySelector('#optimizer-map-legend');
       const optimizerMapMessage = document.querySelector('#optimizer-map-message');
       const optimizerMapRefresh = document.querySelector('#optimizer-map-refresh');
+      const optimizerJobsTableBody = document.querySelector('#optimizer-jobs-table-body');
+      const optimizerJobsTableEmpty = document.querySelector('#optimizer-jobs-table-empty');
+      const optimizerJobsTableSummary = document.querySelector('#optimizer-jobs-table-summary');
+      const optimizerJobSortButtons = document.querySelectorAll('[data-optimizer-job-sort]');
+      const optimizerJobsFilterToggle = document.querySelector('#optimizer-jobs-filter-toggle');
+      const optimizerJobsFilterClear = document.querySelector('#optimizer-jobs-filter-clear');
+      const optimizerJobsFilterRow = document.querySelector('#optimizer-jobs-filter-row');
+      const optimizerJobFilterControls = document.querySelectorAll('[data-optimizer-job-filter]');
 
       const errorView = document.querySelector('#optimizer-error');
       let defaultOptions = null;
@@ -4053,6 +4257,9 @@
       let completedOptimizerRunId = 0;
       let optimizerMergeConsoleVisible = true;
       let optimizerMap = null;
+      let optimizerMapJobs = [];
+      let optimizerJobsSort = { key: 'job_id', direction: 1 };
+      const optimizerJobsExcludedValues = Object.create(null);
       const optimizerMapLayers = new Map();
       const optimizerMapToggleStates = new Map();
       let optimizerDepotColors = new Map();
@@ -4978,6 +5185,219 @@
         return true;
       }
 
+      function optimizerAnyDepotSelected() {
+        return [...optimizerMapToggleStates.entries()]
+          .some(([key, enabled]) => key !== '__changed__' && enabled !== false);
+      }
+
+      function optimizerJobIsVisible(job, anyDepotSelected = optimizerAnyDepotSelected()) {
+        const relatedDepots = [String(job.original_depot), String(job.output_depot)];
+        const relatedDepotSelected = relatedDepots.some(
+          depotId => optimizerMapToggleStates.get(depotId) !== false,
+        );
+        return job.changed
+          ? optimizerMapToggleStates.get('__changed__') !== false
+          && (!anyDepotSelected || relatedDepotSelected)
+          : relatedDepotSelected;
+      }
+
+      function formatOptimizerArrival(value) {
+        const timestamp = Number(value);
+        if (!Number.isFinite(timestamp)) return '';
+        const date = new Date(timestamp > 1e12 ? timestamp : timestamp * 1000);
+        if (Number.isNaN(date.getTime())) return '';
+        const pad = part => String(part).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} `
+          + `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+      }
+
+      function optimizerJobFilterValue(job, key) {
+        return key === 'arrival'
+          ? formatOptimizerArrival(job.arrival)
+          : String(job[key] ?? '');
+      }
+
+      function optimizerIsDepotFilter(key) {
+        return key === 'original_depot' || key === 'output_depot';
+      }
+
+      function setOptimizerMapToggle(key, enabled) {
+        const normalizedKey = String(key);
+        optimizerMapToggleStates.set(normalizedKey, enabled);
+        optimizerMapLegend.querySelectorAll('input[data-map-toggle-key]').forEach(input => {
+          if (input.dataset.mapToggleKey === normalizedKey) input.checked = enabled;
+        });
+      }
+
+      function syncOptimizerJobFilterOptions() {
+        const compare = (left, right) => String(left).localeCompare(
+          String(right), undefined, { numeric: true, sensitivity: 'base' },
+        );
+        optimizerJobFilterControls.forEach(control => {
+          const key = control.dataset.optimizerJobFilter;
+          const values = [...new Set(optimizerMapJobs.map(job =>
+            optimizerJobFilterValue(job, key)))].sort(compare);
+          const depotFilter = optimizerIsDepotFilter(key);
+          const excluded = optimizerJobsExcludedValues[key]
+            || (optimizerJobsExcludedValues[key] = new Set());
+          const selectedCount = values.filter(value => depotFilter
+            ? optimizerMapToggleStates.get(value) !== false
+            : !excluded.has(value)).length;
+          control.querySelector('summary').textContent = selectedCount === values.length
+            ? 'All values' : `${selectedCount}/${values.length} selected`;
+          const options = control.querySelector('.optimizer-column-filter-options');
+          const allLabel = document.createElement('label');
+          const allCheckbox = document.createElement('input');
+          allCheckbox.type = 'checkbox';
+          allCheckbox.checked = values.length > 0 && selectedCount === values.length;
+          allCheckbox.indeterminate = selectedCount > 0 && selectedCount < values.length;
+          allCheckbox.addEventListener('change', () => {
+            values.forEach(value => {
+              if (depotFilter) {
+                setOptimizerMapToggle(value, allCheckbox.checked);
+              } else if (allCheckbox.checked) {
+                excluded.delete(value);
+              } else {
+                excluded.add(value);
+              }
+            });
+            if (depotFilter) updateOptimizerMapVisibility();
+            else {
+              syncOptimizerJobFilterOptions();
+              renderOptimizerJobsTable();
+            }
+          });
+          allLabel.append(allCheckbox, document.createTextNode('All values'));
+          let changedLabel = null;
+          if (key === 'output_depot') {
+            changedLabel = document.createElement('label');
+            const changedCheckbox = document.createElement('input');
+            changedCheckbox.type = 'checkbox';
+            changedCheckbox.checked = optimizerMapToggleStates.get('__changed__') !== false;
+            changedCheckbox.addEventListener('change', () => {
+              setOptimizerMapToggle('__changed__', changedCheckbox.checked);
+              updateOptimizerMapVisibility();
+            });
+            changedLabel.append(
+              changedCheckbox,
+              document.createTextNode('Changed depots'),
+            );
+          }
+          const valueLabels = values.map(value => {
+            const label = document.createElement('label');
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = depotFilter
+              ? optimizerMapToggleStates.get(value) !== false
+              : !excluded.has(value);
+            checkbox.addEventListener('change', () => {
+              if (depotFilter) {
+                setOptimizerMapToggle(value, checkbox.checked);
+                updateOptimizerMapVisibility();
+              } else {
+                if (checkbox.checked) excluded.delete(value);
+                else excluded.add(value);
+                syncOptimizerJobFilterOptions();
+                renderOptimizerJobsTable();
+              }
+            });
+            label.append(checkbox, document.createTextNode(value || '(empty)'));
+            return label;
+          });
+          options.replaceChildren(
+            allLabel,
+            ...(changedLabel ? [changedLabel] : []),
+            ...valueLabels,
+          );
+        });
+      }
+
+      function optimizerJobMatchesColumnFilters(job) {
+        return [...optimizerJobFilterControls].every(control => {
+          const key = control.dataset.optimizerJobFilter;
+          if (optimizerIsDepotFilter(key)) return true;
+          const excluded = optimizerJobsExcludedValues[key];
+          return !excluded?.has(optimizerJobFilterValue(job, key));
+        });
+      }
+
+      function renderOptimizerJobsTable() {
+        const anyDepotSelected = optimizerAnyDepotSelected();
+        const depotVisibleJobs = optimizerMapJobs.filter(job =>
+          optimizerJobIsVisible(job, anyDepotSelected));
+        const visibleJobs = depotVisibleJobs.filter(optimizerJobMatchesColumnFilters);
+        const { key, direction } = optimizerJobsSort;
+        const collator = new Intl.Collator(undefined, {
+          numeric: true, sensitivity: 'base',
+        });
+        visibleJobs.sort((left, right) => {
+          if (key === 'arrival') {
+            const leftValue = Number(left[key]);
+            const rightValue = Number(right[key]);
+            if (!Number.isFinite(leftValue)) return Number.isFinite(rightValue) ? 1 : 0;
+            if (!Number.isFinite(rightValue)) return -1;
+            return (leftValue - rightValue) * direction;
+          }
+          return collator.compare(String(left[key] ?? ''), String(right[key] ?? ''))
+            * direction;
+        });
+        optimizerJobsTableBody.replaceChildren(...visibleJobs.map(job => {
+          const row = document.createElement('tr');
+          const values = [
+            job.job_id,
+            job.job_extra_id,
+            job.point_id,
+            job.original_depot,
+            job.output_depot,
+            job.transport_id,
+            formatOptimizerArrival(job.arrival),
+          ];
+          row.append(...values.map(value => {
+            const cell = document.createElement('td');
+            cell.textContent = value ?? '';
+            return cell;
+          }));
+          return row;
+        }));
+        optimizerJobsTableEmpty.hidden = visibleJobs.length > 0;
+        optimizerJobsTableSummary.textContent = optimizerMapJobs.length
+          ? `Showing ${visibleJobs.length} of ${optimizerMapJobs.length} jobs.`
+          : 'No jobs to display.';
+        optimizerJobSortButtons.forEach(button => {
+          if (!button.dataset.sortLabel) button.dataset.sortLabel = button.textContent;
+          const active = button.dataset.optimizerJobSort === key;
+          button.textContent = `${button.dataset.sortLabel}${active
+            ? direction > 0 ? ' ▲' : ' ▼' : ''}`;
+          button.closest('th').setAttribute(
+            'aria-sort', active ? direction > 0 ? 'ascending' : 'descending' : 'none',
+          );
+        });
+      }
+
+      optimizerJobSortButtons.forEach(button => {
+        button.addEventListener('click', () => {
+          const key = button.dataset.optimizerJobSort;
+          optimizerJobsSort = optimizerJobsSort.key === key
+            ? { key, direction: optimizerJobsSort.direction * -1 }
+            : { key, direction: 1 };
+          renderOptimizerJobsTable();
+        });
+      });
+
+      optimizerJobsFilterToggle.addEventListener('click', () => {
+        optimizerJobsFilterRow.hidden = !optimizerJobsFilterRow.hidden;
+        optimizerJobsFilterToggle.textContent = optimizerJobsFilterRow.hidden
+          ? 'Show filters' : 'Hide filters';
+      });
+
+      optimizerJobsFilterClear.addEventListener('click', () => {
+        Object.values(optimizerJobsExcludedValues).forEach(excluded => excluded.clear());
+        for (const key of optimizerMapToggleStates.keys()) {
+          setOptimizerMapToggle(key, true);
+        }
+        updateOptimizerMapVisibility();
+      });
+
       function clearOptimizerMap() {
         if (optimizerMap) {
           for (const item of optimizerMapLayers.values()) {
@@ -4986,9 +5406,11 @@
         }
         optimizerMapLayers.clear();
         optimizerMapToggleStates.clear();
+        optimizerMapJobs = [];
         optimizerMapSummary.textContent = '';
         optimizerMapToggleAll.disabled = true;
         optimizerMapLegend.replaceChildren();
+        renderOptimizerJobsTable();
       }
 
       function syncOptimizerMapOutputs({ selectLatest = false } = {}) {
@@ -5046,20 +5468,11 @@
 
       function updateOptimizerMapVisibility() {
         if (!optimizerMap) return;
-        const anyDepotSelected = [...optimizerMapToggleStates.entries()]
-          .some(([key, enabled]) => key !== '__changed__' && enabled !== false);
+        const anyDepotSelected = optimizerAnyDepotSelected();
         for (const [key, mapItem] of optimizerMapLayers) {
           let visible;
-          if (mapItem.kind === 'job' && mapItem.changed) {
-            const relatedDepotSelected = mapItem.depotIds.some(
-              depotId => optimizerMapToggleStates.get(depotId) !== false,
-            );
-            visible = optimizerMapToggleStates.get('__changed__') !== false
-              && (!anyDepotSelected || relatedDepotSelected);
-          } else if (mapItem.kind === 'job') {
-            visible = mapItem.depotIds.some(
-              depotId => optimizerMapToggleStates.get(depotId) !== false,
-            );
+          if (mapItem.kind === 'job') {
+            visible = optimizerJobIsVisible(mapItem.job, anyDepotSelected);
           } else {
             visible = optimizerMapToggleStates.get(key) !== false;
           }
@@ -5070,6 +5483,8 @@
           }
         }
         fitVisibleOptimizerMarks();
+        syncOptimizerJobFilterOptions();
+        renderOptimizerJobsTable();
       }
 
       function addOptimizerLegend(key, color, text, square = false) {
@@ -5187,6 +5602,8 @@
 
       function renderOptimizerAssignmentMap(data) {
         clearOptimizerMap();
+        optimizerMapJobs = data.jobs;
+        syncOptimizerJobFilterOptions();
         const loadedJobCount = data.jobs.length;
         const jobPercentage = count => loadedJobCount
           ? Math.round((count / loadedJobCount) * 100)
@@ -5224,7 +5641,10 @@
           String(depotId),
           palette[index] || `hsl(${(index * 137.508 + 35) % 360} 72% 43%)`,
         ]));
-        if (!ensureOptimizerMap()) return;
+        if (!ensureOptimizerMap()) {
+          renderOptimizerJobsTable();
+          return;
+        }
 
         for (const depotId of depotIds) {
           optimizerMapLayers.set(String(depotId), {
@@ -5253,6 +5673,7 @@
           const layerKey = `__job__:${index}`;
           const mapItem = {
             kind: 'job',
+            job,
             changed: job.changed,
             depotIds: [...new Set([
               String(job.original_depot),

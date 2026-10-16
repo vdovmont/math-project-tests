@@ -152,6 +152,7 @@ def build_assignment_map(merged_input, output_json):
     for route in routes:
         if not isinstance(route, dict) or not isinstance(route.get("deliveries"), list):
             continue
+        transport_id = route.get("transportID")
         for delivery in route["deliveries"]:
             if not isinstance(delivery, dict) or "depot" not in delivery:
                 continue
@@ -167,11 +168,16 @@ def build_assignment_map(merged_input, output_json):
             output_depot = delivery.get("depot")
             jobs.append({
                 "job_id": str(job.get("id")),
+                "job_extra_id": (
+                    str(job.get("extraID")) if job.get("extraID") is not None else ""
+                ),
                 "point_id": str(job.get("point")),
                 "lat": point["lat"],
                 "lon": point["lon"],
                 "original_depot": str(original_depot),
                 "output_depot": str(output_depot),
+                "transport_id": str(transport_id) if transport_id is not None else "",
+                "arrival": delivery.get("arrival"),
                 "changed": normalized_id(original_depot) != normalized_id(output_depot),
             })
             seen_jobs.add(job_id)

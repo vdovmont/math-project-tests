@@ -787,6 +787,15 @@
       white-space: nowrap;
     }
 
+    .optimizer-viewer-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    }
+
+    .optimizer-viewer-header .file-viewer-meta {
+      justify-self: end;
+    }
+
     .copy-file-button {
       padding: 3px 8px;
       border: 1px solid var(--border);
@@ -813,7 +822,8 @@
 
     #file-content,
     #result-content,
-    #optimizer-file-content {
+    #optimizer-file-content,
+    #optimizer-merge-console {
       height: 475px;
       margin: 0;
       padding: 18px;
@@ -1532,17 +1542,15 @@
             <div class="console-header">
               <div class="console-title-actions">
                 <h2>Live progress</h2>
-                <button id="optimizer-run-button" class="run-button optimizer-merge-button" type="button"
-                  disabled>Create new group and add JSONs in it</button>
+                <button id="optimizer-run-button" class="run-button" type="button" disabled>Create new group and add
+                  JSONs in it</button>
               </div>
               <div class="console-actions">
-                <button id="optimizer-show-live-output" class="small-button" type="button" disabled>Show live
-                  output</button>
                 <div id="optimizer-status" class="status">Idle</div>
                 <button id="optimizer-open-result" class="small-button" type="button" disabled>Open result</button>
               </div>
             </div>
-            <pre id="optimizer-console" aria-live="polite">Waiting for an Optimizer merge.</pre>
+            <pre id="optimizer-console" aria-live="polite">Waiting for an optimization run.</pre>
           </section>
         </div>
       </section>
@@ -1633,8 +1641,10 @@
       <section id="optimizer-files-page" class="optimizer-page" hidden>
         <section class="panel files-panel">
           <div class="files-toolbar">
-            <h2>Optimizer JSON groups</h2>
+            <h2>JSON groups</h2>
             <div class="console-actions">
+              <button id="optimizer-merge-button" class="run-button optimizer-merge-button" type="button"
+                disabled>Create new group and add JSONs in it</button>
               <button id="optimizer-new-group" class="add-button" type="button">New group</button>
               <button id="optimizer-add-initial" class="add-button" type="button">Add initial JSONs</button>
               <button id="optimizer-delete-files" class="danger-button" type="button">Delete JSONs</button>
@@ -1645,14 +1655,27 @@
           <div class="file-browser">
             <div id="optimizer-group-list" class="file-list"></div>
             <section class="file-viewer">
-              <div class="file-viewer-header">
-                <span id="optimizer-file-title">Select a JSON file</span>
-                <span class="file-viewer-meta">
-                  <span id="optimizer-file-size"></span>
-                  <button id="optimizer-copy-file" class="copy-file-button" type="button" hidden disabled>Copy</button>
-                </span>
+              <div id="optimizer-file-view" hidden>
+                <div class="file-viewer-header optimizer-viewer-header">
+                  <span id="optimizer-file-title">Select a JSON file</span>
+                  <button class="small-button optimizer-toggle-merge-console" type="button">Show merge console</button>
+                  <span class="file-viewer-meta">
+                    <span id="optimizer-file-size"></span>
+                    <button id="optimizer-copy-file" class="copy-file-button" type="button" hidden
+                      disabled>Copy</button>
+                  </span>
+                </div>
+                <pre id="optimizer-file-content" class="file-content">No file selected.</pre>
               </div>
-              <pre id="optimizer-file-content" class="file-content">No file selected.</pre>
+              <div id="optimizer-merge-console-view">
+                <div class="file-viewer-header optimizer-viewer-header">
+                  <span>Merge console</span>
+                  <button class="small-button optimizer-toggle-merge-console" type="button">Hide merge console</button>
+                  <span></span>
+                </div>
+                <pre id="optimizer-merge-console" class="file-content"
+                  aria-live="polite">Waiting for an Optimizer merge.</pre>
+              </div>
             </section>
           </div>
         </section>
@@ -3957,7 +3980,14 @@
       const optimizerFileTitle = document.querySelector('#optimizer-file-title');
       const optimizerFileSize = document.querySelector('#optimizer-file-size');
       const optimizerFileContent = document.querySelector('#optimizer-file-content');
+      const optimizerFileView = document.querySelector('#optimizer-file-view');
       const optimizerCopyFile = document.querySelector('#optimizer-copy-file');
+      const optimizerMergeButton = document.querySelector('#optimizer-merge-button');
+      const optimizerToggleMergeConsoleButtons = document.querySelectorAll(
+        '.optimizer-toggle-merge-console',
+      );
+      const optimizerMergeConsoleView = document.querySelector('#optimizer-merge-console-view');
+      const optimizerMergeConsole = document.querySelector('#optimizer-merge-console');
       const newGroupDialog = document.querySelector('#optimizer-new-group-dialog');
       const newGroupForm = document.querySelector('#optimizer-new-group-form');
       const newGroupName = document.querySelector('#optimizer-new-group-name');
@@ -3990,7 +4020,6 @@
       const optimizerRunButton = document.querySelector('#optimizer-run-button');
       const optimizerStatus = document.querySelector('#optimizer-status');
       const optimizerOpenResult = document.querySelector('#optimizer-open-result');
-      const optimizerShowLiveOutput = document.querySelector('#optimizer-show-live-output');
       const optimizerConsole = document.querySelector('#optimizer-console');
       const optimizerMapGroup = document.querySelector('#optimizer-map-group');
       const optimizerMapOutput = document.querySelector('#optimizer-map-output');
@@ -4022,9 +4051,7 @@
       let optimizerRunStopping = false;
       let optimizerStatusPolling = false;
       let completedOptimizerRunId = 0;
-      let optimizerStatusMode = 'idle';
-      let lastOptimizerLiveConsole = optimizerConsole.textContent;
-      let optimizerShowingGroupReport = false;
+      let optimizerMergeConsoleVisible = true;
       let optimizerMap = null;
       const optimizerMapLayers = new Map();
       const optimizerMapToggleStates = new Map();
@@ -4375,13 +4402,13 @@
       function updateOptimizerRunButton() {
         const group = selectedGroup();
         optimizerRunButton.classList.remove('stop-button');
-        optimizerRunButton.classList.add('optimizer-merge-button');
         if (optimizerRunRunning) {
-          optimizerRunButton.classList.remove('optimizer-merge-button');
           optimizerRunButton.classList.add('stop-button');
           optimizerRunButton.textContent = optimizerRunStopping
             ? 'Stopping...' : 'Stop optimization';
           optimizerRunButton.disabled = optimizerRunStopping;
+          optimizerMergeButton.textContent = 'Optimization running';
+          optimizerMergeButton.disabled = true;
           optimizerRunButton.title = optimizerRunStopping
             ? 'Waiting for the Optimizer run to stop.'
             : 'Stop the active MathCore optimization query.';
@@ -4391,18 +4418,26 @@
           optimizerRunButton.textContent = 'Create new group and add JSONs in it';
           optimizerRunButton.disabled = true;
           optimizerRunButton.title = 'Select an Optimizer group first.';
+          optimizerMergeButton.textContent = 'Create new group and add JSONs in it';
+          optimizerMergeButton.disabled = true;
           return;
         }
         if (!group.initial.length) {
-          optimizerRunButton.textContent = 'Add JSONs to selected group';
+          optimizerRunButton.textContent = 'Merge inputs in JSON files';
           optimizerRunButton.disabled = true;
-          optimizerRunButton.title = 'Add at least one initial JSON to the selected group.';
+          optimizerRunButton.title = 'Add and merge input JSONs in the JSON files tab.';
+          optimizerMergeButton.textContent = 'Add JSONs to selected group';
+          optimizerMergeButton.disabled = true;
+          optimizerMergeButton.title = 'Add at least one initial JSON to the selected group.';
           return;
         }
         if (group.merge_blocked) {
-          optimizerRunButton.textContent = 'Fix previous merge errors';
+          optimizerRunButton.textContent = 'Merge inputs in JSON files';
           optimizerRunButton.disabled = true;
-          optimizerRunButton.title =
+          optimizerRunButton.title = 'Fix the previous merge errors in the JSON files tab.';
+          optimizerMergeButton.textContent = 'Fix previous merge errors';
+          optimizerMergeButton.disabled = true;
+          optimizerMergeButton.title =
             'The previous merge failed and the input JSONs have not changed.';
           return;
         }
@@ -4410,14 +4445,19 @@
         const mergeIsCurrent = group.merged &&
           Number(group.merged_distance_percent) === currentDistance;
         if (mergeIsCurrent) {
-          optimizerRunButton.classList.remove('optimizer-merge-button');
           optimizerRunButton.textContent = 'Start optimization';
           optimizerRunButton.disabled = false;
           optimizerRunButton.title = 'Send the merged input to MathCore.';
+          optimizerMergeButton.textContent = 'Merge completed';
+          optimizerMergeButton.disabled = true;
+          optimizerMergeButton.title = 'The selected group is already merged with Distance option.';
         } else {
-          optimizerRunButton.textContent = 'Start merge';
-          optimizerRunButton.disabled = false;
-          optimizerRunButton.title = 'Merge the selected group\'s initial JSON files.';
+          optimizerRunButton.textContent = 'Merge inputs in JSON files';
+          optimizerRunButton.disabled = true;
+          optimizerRunButton.title = 'Merge this group in the JSON files tab first.';
+          optimizerMergeButton.textContent = 'Start merge';
+          optimizerMergeButton.disabled = false;
+          optimizerMergeButton.title = 'Merge the selected group\'s initial JSON files.';
         }
       }
 
@@ -4426,27 +4466,38 @@
         if (optimizerGroups.some(group => group.id === preferredId)) select.value = preferredId;
       }
 
-      function setOptimizerLiveConsole(text) {
-        lastOptimizerLiveConsole = text;
-        if (!optimizerShowingGroupReport) optimizerConsole.textContent = text;
+      function showOptimizerFileView() {
+        optimizerMergeConsoleVisible = false;
+        optimizerMergeConsoleView.hidden = true;
+        optimizerFileView.hidden = false;
+        optimizerToggleMergeConsoleButtons.forEach(button => {
+          button.textContent = 'Show merge console';
+        });
       }
 
-      function showOptimizerLiveConsole() {
-        optimizerShowingGroupReport = false;
-        optimizerShowLiveOutput.disabled = true;
-        optimizerConsole.textContent = lastOptimizerLiveConsole;
+      function showOptimizerMergeConsoleView() {
+        optimizerMergeConsoleVisible = true;
+        optimizerFileView.hidden = true;
+        optimizerMergeConsoleView.hidden = false;
+        optimizerToggleMergeConsoleButtons.forEach(button => {
+          button.textContent = 'Hide merge console';
+        });
       }
 
-      optimizerShowLiveOutput.addEventListener('click', showOptimizerLiveConsole);
+      optimizerToggleMergeConsoleButtons.forEach(button => {
+        button.addEventListener('click', async () => {
+          if (optimizerMergeConsoleVisible) showOptimizerFileView();
+          else await showSelectedOptimizerMergeReport();
+        });
+      });
 
       async function showSelectedOptimizerMergeReport() {
-        optimizerShowingGroupReport = true;
-        optimizerShowLiveOutput.disabled = false;
+        showOptimizerMergeConsoleView();
         const group = selectedGroup();
         const warningCount = Number(group?.last_merge_warning_count) || 0;
         const errorCount = Number(group?.last_merge_error_count) || 0;
         if (!group?.merge_report || !group.last_merge_status) {
-          optimizerConsole.textContent = 'Waiting for an Optimizer action...';
+          optimizerMergeConsole.textContent = 'No previous merge result for this group.';
           return;
         }
         const inputCount = Number.isInteger(group.last_merge_input_count)
@@ -4468,7 +4519,7 @@
         }
         const previousResult = previousResultLines.join('\n');
         if (!warningCount && !errorCount) {
-          optimizerConsole.textContent = previousResult;
+          optimizerMergeConsole.textContent = previousResult;
           return;
         }
         const requestedGroupId = group.id;
@@ -4479,7 +4530,7 @@
             path: group.merge_report.path,
           });
           const data = await fetchJson(`/api/optimizer/file?${query}`);
-          if (optimizerShowingGroupReport && selectedOptimizerGroupId === requestedGroupId) {
+          if (optimizerMergeConsoleVisible && selectedOptimizerGroupId === requestedGroupId) {
             const reportLines = data.content.replace(/\r\n/g, '\n').split('\n');
             const warningsIndex = reportLines.findIndex(line => line.trim() === 'Warnings:');
             const emptyWarningsIndex = reportLines.findIndex(
@@ -4503,12 +4554,12 @@
             const blockedNotice = group.merge_blocked
               ? '\n\nNew merge blocked: the input JSONs have not changed. Fix the errors below by changing the group inputs.'
               : '';
-            optimizerConsole.textContent =
+            optimizerMergeConsole.textContent =
               `${previousResult}${blockedNotice}\n\n${detailLines.join('\n')}`;
           }
         } catch (error) {
-          if (optimizerShowingGroupReport && selectedOptimizerGroupId === requestedGroupId) {
-            optimizerConsole.textContent = `Could not load merge report\n\n${error.message}`;
+          if (optimizerMergeConsoleVisible && selectedOptimizerGroupId === requestedGroupId) {
+            optimizerMergeConsole.textContent = `Could not load merge report\n\n${error.message}`;
           }
         }
       }
@@ -4680,6 +4731,7 @@
           loadedOptimizerFileContent = data.content;
           optimizerCopyFile.hidden = false;
           optimizerCopyFile.disabled = false;
+          showOptimizerFileView();
           renderOptimizerGroups();
         } catch (error) {
           errorView.textContent = error.message;
@@ -4739,50 +4791,45 @@
         if (!group || !group.initial.length) return;
         const mergeIsCurrent = group.merged &&
           Number(group.merged_distance_percent) === Number(distanceInput.value);
-        if (mergeIsCurrent) {
-          if (!baseUrlInput.reportValidity()) return;
-          showOptimizerLiveConsole();
-          optimizerStatusMode = 'optimization';
-          optimizerRunButton.disabled = true;
-          optimizerOpenResult.disabled = true;
-          lastOptimizerResultFile = null;
-          lastOptimizerResultHasZeroJobs = false;
-          errorView.textContent = '';
-          try {
-            const status = await fetchJson('/api/optimizer/start', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                group_id: group.id,
-                base_url: baseUrlInput.value,
-                distance_percent: distanceInput.value,
-                saved_url_name: savedUrlSelect.value || null,
-                profile_name: savedProfileSelect.value || null,
-              }),
-            });
-            previousOptions = status.previous_options;
-            previousProfileName = status.previous_profile;
-            updateProfileButtons();
-            applyOptimizerStatus(status);
-          } catch (error) {
-            optimizerStatusMode = 'merge';
-            optimizerStatus.className = 'status failed';
-            optimizerStatus.textContent = 'Failed';
-            setOptimizerLiveConsole(`Could not start optimization\n\n${error.message}`);
-            errorView.textContent = error.message;
-            optimizerRunRunning = false;
-            updateOptimizerRunButton();
-          }
-          return;
-        }
-        showOptimizerLiveConsole();
-        optimizerStatusMode = 'merge';
+        if (!mergeIsCurrent || !baseUrlInput.reportValidity()) return;
         optimizerRunButton.disabled = true;
-        optimizerStatus.className = 'status running';
-        optimizerStatus.textContent = 'Merging';
-        setOptimizerLiveConsole(
-          `Merging ${group.initial.length} initial JSON file(s) from ${group.name}...`,
-        );
         optimizerOpenResult.disabled = true;
+        lastOptimizerResultFile = null;
+        lastOptimizerResultHasZeroJobs = false;
+        errorView.textContent = '';
+        try {
+          const status = await fetchJson('/api/optimizer/start', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              group_id: group.id,
+              base_url: baseUrlInput.value,
+              distance_percent: distanceInput.value,
+              saved_url_name: savedUrlSelect.value || null,
+              profile_name: savedProfileSelect.value || null,
+            }),
+          });
+          previousOptions = status.previous_options;
+          previousProfileName = status.previous_profile;
+          updateProfileButtons();
+          applyOptimizerStatus(status);
+        } catch (error) {
+          optimizerStatus.className = 'status failed';
+          optimizerStatus.textContent = 'Failed';
+          optimizerConsole.textContent = `Could not start optimization\n\n${error.message}`;
+          errorView.textContent = error.message;
+          optimizerRunRunning = false;
+          updateOptimizerRunButton();
+        }
+      });
+
+      optimizerMergeButton.addEventListener('click', async () => {
+        const group = selectedGroup();
+        if (!group || !group.initial.length || group.merge_blocked) return;
+        showOptimizerMergeConsoleView();
+        optimizerMergeButton.disabled = true;
+        optimizerMergeButton.textContent = 'Merging...';
+        optimizerMergeConsole.textContent =
+          `Merging ${group.initial.length} initial JSON file(s) from ${group.name}...`;
         errorView.textContent = '';
         try {
           const data = await fetchJson('/api/optimizer/merge', {
@@ -4795,26 +4842,15 @@
           });
           optimizerGroups = data.groups;
           selectedOptimizerGroupId = data.selected_group_id;
-          setOptimizerLiveConsole(data.merge_status === 'failed'
+          optimizerMergeConsole.textContent = data.merge_status === 'failed'
             ? `New merge blocked until the group inputs change. Fix the errors below before starting another merge.\n\n${data.report}`
-            : data.report);
+            : data.report;
           lastOptimizerResultFile = null;
           lastOptimizerResultHasZeroJobs = false;
           optimizerOpenResult.disabled = true;
-          if (data.merge_status === 'done') {
-            optimizerStatus.className = data.warning_count
-              ? 'status warning' : 'status success';
-            optimizerStatus.textContent = data.warning_count
-              ? `Done (${data.warning_count} warnings)` : 'Done';
-          } else {
-            optimizerStatus.className = 'status failed';
-            optimizerStatus.textContent = `Failed (${data.error_count})`;
-          }
           renderOptimizerGroups();
         } catch (error) {
-          optimizerStatus.className = 'status failed';
-          optimizerStatus.textContent = 'Failed';
-          setOptimizerLiveConsole(`Merge failed\n\n${error.message}`);
+          optimizerMergeConsole.textContent = `Merge failed\n\n${error.message}`;
           errorView.textContent = error.message;
           updateOptimizerRunButton();
         }
@@ -4862,8 +4898,7 @@
       }
 
       function applyOptimizerStatus(status) {
-        if (status.run_id === 0 || optimizerStatusMode === 'merge' && !status.running) return;
-        optimizerStatusMode = 'optimization';
+        if (status.run_id === 0) return;
         optimizerRunRunning = Boolean(status.running);
         optimizerRunStopping = Boolean(status.stopping);
         const elapsed = formatOptimizerElapsed(status.elapsed_time_seconds);
@@ -4871,9 +4906,9 @@
         const zeroJobsNotice = status.zero_jobs_result
           ? `RESULT HAS 0 JOBS TAKEN (0/${status.jobs_total ?? 0}).`
           : '';
-        setOptimizerLiveConsole(zeroJobsNotice
+        optimizerConsole.textContent = zeroJobsNotice
           ? `${logText}${logText ? '\n\n' : ''}${zeroJobsNotice}\n\nTime passed: ${elapsed}\n`
-          : `${logText}${logText ? '\n\n' : ''}Time passed: ${elapsed}\n`);
+          : `${logText}${logText ? '\n\n' : ''}Time passed: ${elapsed}\n`;
         if (status.result_file) {
           lastOptimizerResultFile = status.result_file;
           lastOptimizerResultHasZeroJobs = Boolean(status.zero_jobs_result);
@@ -5501,6 +5536,12 @@
 
 
       form.addEventListener('submit', event => event.preventDefault());
+      document.querySelector('[data-optimizer-tab="optimizer-files-page"]')
+        .addEventListener('click', () => {
+          showSelectedOptimizerMergeReport().catch(error => {
+            errorView.textContent = error.message;
+          });
+        });
       Promise.all([loadDefaults(), loadOptimizerGroups(), pollOptimizerStatus()])
         .then(() => showSelectedOptimizerMergeReport())
         .catch(error => { errorView.textContent = error.message; });

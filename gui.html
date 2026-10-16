@@ -5266,15 +5266,18 @@
       }
 
       function optimizerJobIsVisible(job, anyDepotSelected = optimizerAnyDepotSelected()) {
-        if (optimizerRouteToggleStates.get(job.route_id) === false) return false;
-        const relatedDepots = [String(job.original_depot), String(job.output_depot)];
-        const relatedDepotSelected = relatedDepots.some(
-          depotId => optimizerMapToggleStates.get(depotId) !== false,
-        );
-        return job.changed
-          ? optimizerMapToggleStates.get('__changed__') !== false
-          && (!anyDepotSelected || relatedDepotSelected)
-          : relatedDepotSelected;
+        const originalDepotSelected =
+          optimizerMapToggleStates.get(String(job.original_depot)) !== false;
+        const outputDepotSelected =
+          optimizerMapToggleStates.get(String(job.output_depot)) !== false;
+        const relatedDepotSelected = originalDepotSelected || outputDepotSelected;
+        if (job.changed && optimizerMapToggleStates.get('__changed__') === false) {
+          return false;
+        }
+        if (job.changed && !anyDepotSelected) return true;
+        if (!relatedDepotSelected) return false;
+        return !outputDepotSelected
+          || optimizerRouteToggleStates.get(job.route_id) !== false;
       }
 
       function formatOptimizerArrival(value) {

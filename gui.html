@@ -1228,9 +1228,21 @@
       cursor: pointer;
     }
 
+    .optimizer-column-filter-options label[hidden] {
+      display: none;
+    }
+
     .optimizer-column-filter-options input {
       width: auto;
       margin: 0;
+    }
+
+    .optimizer-column-filter-options .optimizer-filter-search {
+      width: 100%;
+      min-width: 150px;
+      margin: 0 0 5px;
+      padding: 6px 7px;
+      font-size: 11px;
     }
 
     .optimizer-jobs-table td {
@@ -4321,6 +4333,7 @@
       let optimizerRouteLinesVisible = false;
       let optimizerJobsSort = { key: 'job_id', direction: 1 };
       const optimizerJobsExcludedValues = Object.create(null);
+      const optimizerJobFilterSearches = Object.create(null);
       const optimizerMapLayers = new Map();
       const optimizerMapToggleStates = new Map();
       const optimizerRouteToggleStates = new Map();
@@ -5360,6 +5373,13 @@
           control.querySelector('summary').textContent = selectedCount === values.length
             ? 'All values' : `${selectedCount}/${values.length} selected`;
           const options = control.querySelector('.optimizer-column-filter-options');
+          const searchInput = document.createElement('input');
+          searchInput.type = 'search';
+          searchInput.className = 'optimizer-filter-search';
+          searchInput.placeholder = key === 'arrival'
+            ? 'Search time or date…' : 'Search values…';
+          searchInput.setAttribute('aria-label', `Search ${key} values`);
+          searchInput.value = optimizerJobFilterSearches[key] || '';
           const allLabel = document.createElement('label');
           const allCheckbox = document.createElement('input');
           allCheckbox.type = 'checkbox';
@@ -5399,6 +5419,7 @@
               changedCheckbox,
               document.createTextNode('Changed depots'),
             );
+            changedLabel.dataset.filterSearchValue = 'changed depots';
           }
           const valueLabels = values.map(value => {
             const label = document.createElement('label');
@@ -5427,13 +5448,36 @@
               }
             });
             label.append(checkbox, document.createTextNode(value || '(empty)'));
+            label.dataset.filterSearchValue = (value || '(empty)').toLocaleLowerCase();
+            if (key === 'arrival') {
+              label.dataset.filterSearchTime = String(value).split(' ')[1] || '';
+            }
             return label;
           });
           options.replaceChildren(
+            searchInput,
             allLabel,
             ...(changedLabel ? [changedLabel] : []),
             ...valueLabels,
           );
+          const applySearch = () => {
+            const query = searchInput.value.trim().toLocaleLowerCase();
+            optimizerJobFilterSearches[key] = searchInput.value;
+            for (const valueLabel of [changedLabel, ...valueLabels]) {
+              if (!valueLabel) continue;
+              let matches = valueLabel.dataset.filterSearchValue.includes(query);
+              const timeOnlyQuery = /^\d{1,2}(?::\d{0,2}(?::\d{0,2})?)?$/.test(query);
+              if (key === 'arrival' && timeOnlyQuery) {
+                const time = valueLabel.dataset.filterSearchTime || '';
+                const timeWithoutLeadingZero = time.replace(/^0(?=\d)/, '');
+                matches = time.startsWith(query) || timeWithoutLeadingZero.startsWith(query);
+              }
+              valueLabel.hidden = Boolean(query) && !matches;
+            }
+          };
+          searchInput.addEventListener('input', applySearch);
+          searchInput.addEventListener('click', event => event.stopPropagation());
+          applySearch();
         });
       }
 
@@ -5517,6 +5561,9 @@
 
       optimizerJobsFilterClear.addEventListener('click', () => {
         Object.values(optimizerJobsExcludedValues).forEach(excluded => excluded.clear());
+        Object.keys(optimizerJobFilterSearches).forEach(key => {
+          optimizerJobFilterSearches[key] = '';
+        });
         for (const key of optimizerMapToggleStates.keys()) {
           setOptimizerMapToggle(key, true);
         }

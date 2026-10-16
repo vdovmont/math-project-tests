@@ -1094,10 +1094,10 @@
 
     .optimizer-job-marker.changed-depot {
       background: linear-gradient(90deg,
-          var(--depot-color) 0%,
-          var(--depot-color) 50%,
-          var(--changed-color) 50%,
-          var(--changed-color) 100%);
+          var(--original-depot-color) 0%,
+          var(--original-depot-color) 50%,
+          var(--output-depot-color) 50%,
+          var(--output-depot-color) 100%);
     }
 
     .optimizer-depot-marker {
@@ -5224,16 +5224,18 @@
             coordinates: [],
           };
           optimizerMapLayers.set(layerKey, mapItem);
-          const color = job.changed ? '#dc2626' : optimizerDepotColor(job.original_depot);
+          const color = optimizerDepotColor(job.original_depot);
           const markerBody = document.createElement('span');
           markerBody.className = 'optimizer-job-marker';
           markerBody.style.setProperty('--job-color', color);
           if (job.changed) {
             markerBody.classList.add('changed-depot');
             markerBody.style.setProperty(
-              '--depot-color', optimizerDepotColor(job.output_depot),
+              '--original-depot-color', optimizerDepotColor(job.original_depot),
             );
-            markerBody.style.setProperty('--changed-color', '#dc2626');
+            markerBody.style.setProperty(
+              '--output-depot-color', optimizerDepotColor(job.output_depot),
+            );
           }
           markerBody.textContent = job.job_id;
           const icon = L.divIcon({
@@ -5250,7 +5252,11 @@
           );
         }
         if (data.changed_count) {
-          addOptimizerLegend('__changed__', '#dc2626', 'Depot changed');
+          addOptimizerLegend(
+            '__changed__',
+            'conic-gradient(#ef4444 0 16.67%, #f59e0b 16.67% 33.33%, #eab308 33.33% 50%, #22c55e 50% 66.67%, #3b82f6 66.67% 83.33%, #a855f7 83.33% 100%)',
+            'Depot changed',
+          );
         }
         updateOptimizerMapVisibility();
       }

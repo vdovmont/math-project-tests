@@ -1055,6 +1055,16 @@
       margin: 0 0 12px;
     }
 
+    .optimizer-map-toggle-actions {
+      display: flex;
+      gap: 8px;
+      margin: 0 0 12px;
+    }
+
+    .optimizer-map-toggle-actions .optimizer-map-toggle-all {
+      margin: 0;
+    }
+
     .optimizer-map-legend {
       display: grid;
       gap: 8px;
@@ -1074,6 +1084,50 @@
     .optimizer-map-legend-item input {
       width: auto;
       margin: 0;
+    }
+
+    .optimizer-depot-group {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .optimizer-depot-group-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+    }
+
+    .optimizer-depot-group-header .optimizer-map-legend-item {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .optimizer-depot-routes {
+      display: grid;
+      gap: 7px;
+      padding: 0 10px 9px 34px;
+      border-top: 1px solid var(--border);
+    }
+
+    .optimizer-depot-routes[hidden] {
+      display: none;
+    }
+
+    .optimizer-depot-route {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-top: 8px;
+      color: var(--text);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .optimizer-depot-route input {
+      width: auto;
+      margin: 2px 0 0;
     }
 
     .optimizer-jobs-table-panel {
@@ -1813,8 +1867,12 @@
                 <select id="optimizer-map-output"></select>
               </label>
               <div id="optimizer-map-summary" class="optimizer-map-summary"></div>
-              <button id="optimizer-map-toggle-all" class="small-button optimizer-map-toggle-all" type="button"
-                disabled>Toggle all</button>
+              <div class="optimizer-map-toggle-actions">
+                <button id="optimizer-map-toggle-all" class="small-button optimizer-map-toggle-all" type="button"
+                  disabled>Toggle all</button>
+                <button id="optimizer-map-toggle-routes" class="small-button" type="button" disabled>Hide route
+                  lines</button>
+              </div>
               <div id="optimizer-map-legend" class="optimizer-map-legend"></div>
               <div id="optimizer-map-message" class="map-message"></div>
             </div>
@@ -4222,6 +4280,7 @@
       const optimizerMapHeading = document.querySelector('#optimizer-map-heading');
       const optimizerMapSummary = document.querySelector('#optimizer-map-summary');
       const optimizerMapToggleAll = document.querySelector('#optimizer-map-toggle-all');
+      const optimizerMapToggleRoutes = document.querySelector('#optimizer-map-toggle-routes');
       const optimizerMapLegend = document.querySelector('#optimizer-map-legend');
       const optimizerMapMessage = document.querySelector('#optimizer-map-message');
       const optimizerMapRefresh = document.querySelector('#optimizer-map-refresh');
@@ -4258,10 +4317,13 @@
       let optimizerMergeConsoleVisible = true;
       let optimizerMap = null;
       let optimizerMapJobs = [];
+      let optimizerMapRoutes = [];
+      let optimizerRouteLinesVisible = false;
       let optimizerJobsSort = { key: 'job_id', direction: 1 };
       const optimizerJobsExcludedValues = Object.create(null);
       const optimizerMapLayers = new Map();
       const optimizerMapToggleStates = new Map();
+      const optimizerRouteToggleStates = new Map();
       let optimizerDepotColors = new Map();
       const openOptimizerGroups = new Set();
       const openOptimizerSections = new Set();
@@ -5191,6 +5253,7 @@
       }
 
       function optimizerJobIsVisible(job, anyDepotSelected = optimizerAnyDepotSelected()) {
+        if (optimizerRouteToggleStates.get(job.route_id) === false) return false;
         const relatedDepots = [String(job.original_depot), String(job.output_depot)];
         const relatedDepotSelected = relatedDepots.some(
           depotId => optimizerMapToggleStates.get(depotId) !== false,
@@ -5221,12 +5284,51 @@
         return key === 'original_depot' || key === 'output_depot';
       }
 
+      function optimizerRoutesForTransport(transportId) {
+        return optimizerMapRoutes.filter(route =>
+          String(route.transport_id) === String(transportId));
+      }
+
+      function syncOptimizerDepotRouteCheckbox(depotId) {
+        const routes = optimizerMapRoutes.filter(route =>
+          String(route.depot_id) === String(depotId) && route.points.length);
+        if (!routes.length) return;
+        const selectedCount = routes.filter(route =>
+          optimizerRouteToggleStates.get(route.id) !== false).length;
+        optimizerMapLegend.querySelectorAll('input[data-map-toggle-key]').forEach(input => {
+          if (input.dataset.mapToggleKey !== String(depotId)) return;
+          input.checked = selectedCount === routes.length;
+          input.indeterminate = selectedCount > 0 && selectedCount < routes.length;
+        });
+        optimizerMapToggleStates.set(String(depotId), selectedCount > 0);
+      }
+
+      function setOptimizerRouteToggle(route, enabled) {
+        optimizerRouteToggleStates.set(route.id, enabled);
+        optimizerMapLegend.querySelectorAll('input[data-route-toggle-id]').forEach(input => {
+          if (input.dataset.routeToggleId === route.id) input.checked = enabled;
+        });
+        syncOptimizerDepotRouteCheckbox(route.depot_id);
+      }
+
       function setOptimizerMapToggle(key, enabled) {
         const normalizedKey = String(key);
         optimizerMapToggleStates.set(normalizedKey, enabled);
         optimizerMapLegend.querySelectorAll('input[data-map-toggle-key]').forEach(input => {
-          if (input.dataset.mapToggleKey === normalizedKey) input.checked = enabled;
+          if (input.dataset.mapToggleKey === normalizedKey) {
+            input.checked = enabled;
+            input.indeterminate = false;
+          }
         });
+        if (normalizedKey !== '__changed__') {
+          for (const route of optimizerMapRoutes) {
+            if (String(route.depot_id) !== normalizedKey) continue;
+            optimizerRouteToggleStates.set(route.id, enabled);
+            optimizerMapLegend.querySelectorAll('input[data-route-toggle-id]').forEach(input => {
+              if (input.dataset.routeToggleId === route.id) input.checked = enabled;
+            });
+          }
+        }
       }
 
       function syncOptimizerJobFilterOptions() {
@@ -5238,11 +5340,23 @@
           const values = [...new Set(optimizerMapJobs.map(job =>
             optimizerJobFilterValue(job, key)))].sort(compare);
           const depotFilter = optimizerIsDepotFilter(key);
+          const routeFilter = key === 'transport_id';
           const excluded = optimizerJobsExcludedValues[key]
             || (optimizerJobsExcludedValues[key] = new Set());
-          const selectedCount = values.filter(value => depotFilter
-            ? optimizerMapToggleStates.get(value) !== false
-            : !excluded.has(value)).length;
+          const valueIsSelected = value => {
+            if (depotFilter) return optimizerMapToggleStates.get(value) !== false;
+            if (routeFilter) {
+              const routes = optimizerRoutesForTransport(value);
+              return routes.length > 0 && routes.every(route =>
+                optimizerRouteToggleStates.get(route.id) !== false);
+            }
+            return !excluded.has(value);
+          };
+          const selectedCount = values.filter(valueIsSelected).length;
+          const anySelected = routeFilter
+            ? values.some(value => optimizerRoutesForTransport(value).some(route =>
+              optimizerRouteToggleStates.get(route.id) !== false))
+            : selectedCount > 0;
           control.querySelector('summary').textContent = selectedCount === values.length
             ? 'All values' : `${selectedCount}/${values.length} selected`;
           const options = control.querySelector('.optimizer-column-filter-options');
@@ -5250,18 +5364,21 @@
           const allCheckbox = document.createElement('input');
           allCheckbox.type = 'checkbox';
           allCheckbox.checked = values.length > 0 && selectedCount === values.length;
-          allCheckbox.indeterminate = selectedCount > 0 && selectedCount < values.length;
+          allCheckbox.indeterminate = anySelected && selectedCount < values.length;
           allCheckbox.addEventListener('change', () => {
             values.forEach(value => {
               if (depotFilter) {
                 setOptimizerMapToggle(value, allCheckbox.checked);
+              } else if (routeFilter) {
+                optimizerRoutesForTransport(value).forEach(route =>
+                  setOptimizerRouteToggle(route, allCheckbox.checked));
               } else if (allCheckbox.checked) {
                 excluded.delete(value);
               } else {
                 excluded.add(value);
               }
             });
-            if (depotFilter) updateOptimizerMapVisibility();
+            if (depotFilter || routeFilter) updateOptimizerMapVisibility();
             else {
               syncOptimizerJobFilterOptions();
               renderOptimizerJobsTable();
@@ -5269,7 +5386,7 @@
           });
           allLabel.append(allCheckbox, document.createTextNode('All values'));
           let changedLabel = null;
-          if (key === 'output_depot') {
+          if (depotFilter) {
             changedLabel = document.createElement('label');
             const changedCheckbox = document.createElement('input');
             changedCheckbox.type = 'checkbox';
@@ -5287,12 +5404,20 @@
             const label = document.createElement('label');
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
-            checkbox.checked = depotFilter
-              ? optimizerMapToggleStates.get(value) !== false
-              : !excluded.has(value);
+            checkbox.checked = valueIsSelected(value);
+            if (routeFilter) {
+              const routes = optimizerRoutesForTransport(value);
+              const activeCount = routes.filter(route =>
+                optimizerRouteToggleStates.get(route.id) !== false).length;
+              checkbox.indeterminate = activeCount > 0 && activeCount < routes.length;
+            }
             checkbox.addEventListener('change', () => {
               if (depotFilter) {
                 setOptimizerMapToggle(value, checkbox.checked);
+                updateOptimizerMapVisibility();
+              } else if (routeFilter) {
+                optimizerRoutesForTransport(value).forEach(route =>
+                  setOptimizerRouteToggle(route, checkbox.checked));
                 updateOptimizerMapVisibility();
               } else {
                 if (checkbox.checked) excluded.delete(value);
@@ -5315,7 +5440,7 @@
       function optimizerJobMatchesColumnFilters(job) {
         return [...optimizerJobFilterControls].every(control => {
           const key = control.dataset.optimizerJobFilter;
-          if (optimizerIsDepotFilter(key)) return true;
+          if (optimizerIsDepotFilter(key) || key === 'transport_id') return true;
           const excluded = optimizerJobsExcludedValues[key];
           return !excluded?.has(optimizerJobFilterValue(job, key));
         });
@@ -5406,9 +5531,14 @@
         }
         optimizerMapLayers.clear();
         optimizerMapToggleStates.clear();
+        optimizerRouteToggleStates.clear();
         optimizerMapJobs = [];
+        optimizerMapRoutes = [];
+        optimizerRouteLinesVisible = false;
         optimizerMapSummary.textContent = '';
         optimizerMapToggleAll.disabled = true;
+        optimizerMapToggleRoutes.disabled = true;
+        optimizerMapToggleRoutes.textContent = 'Show route lines';
         optimizerMapLegend.replaceChildren();
         renderOptimizerJobsTable();
       }
@@ -5473,6 +5603,10 @@
           let visible;
           if (mapItem.kind === 'job') {
             visible = optimizerJobIsVisible(mapItem.job, anyDepotSelected);
+          } else if (mapItem.kind === 'route') {
+            visible = optimizerRouteLinesVisible
+              && optimizerRouteToggleStates.get(mapItem.route.id) !== false
+              && optimizerMapToggleStates.get(String(mapItem.route.depot_id)) !== false;
           } else {
             visible = optimizerMapToggleStates.get(key) !== false;
           }
@@ -5487,7 +5621,7 @@
         renderOptimizerJobsTable();
       }
 
-      function addOptimizerLegend(key, color, text, square = false) {
+      function addOptimizerLegend(key, color, text, square = false, routes = []) {
         const item = document.createElement('label');
         item.className = 'optimizer-map-legend-item';
         const checkbox = document.createElement('input');
@@ -5502,11 +5636,56 @@
         const label = document.createElement('span');
         label.textContent = text;
         checkbox.addEventListener('change', () => {
-          optimizerMapToggleStates.set(key, checkbox.checked);
+          checkbox.indeterminate = false;
+          setOptimizerMapToggle(key, checkbox.checked);
           updateOptimizerMapVisibility();
         });
         item.append(checkbox, swatch, label);
-        optimizerMapLegend.append(item);
+        if (!routes.length) {
+          optimizerMapLegend.append(item);
+        } else {
+          const group = document.createElement('div');
+          group.className = 'optimizer-depot-group';
+          const header = document.createElement('div');
+          header.className = 'optimizer-depot-group-header';
+          const collapseButton = document.createElement('button');
+          collapseButton.type = 'button';
+          collapseButton.className = 'route-collapse-button';
+          collapseButton.textContent = 'Expand';
+          collapseButton.setAttribute('aria-expanded', 'false');
+          const choices = document.createElement('div');
+          choices.className = 'optimizer-depot-routes';
+          choices.hidden = true;
+          for (const route of routes) {
+            const routeLabel = document.createElement('label');
+            routeLabel.className = 'optimizer-depot-route';
+            const routeCheckbox = document.createElement('input');
+            routeCheckbox.type = 'checkbox';
+            routeCheckbox.checked = true;
+            routeCheckbox.disabled = route.points.length === 0;
+            routeCheckbox.dataset.routeToggleId = route.id;
+            const routeText = document.createElement('span');
+            const transportName = route.transport_id || 'Unnamed transport';
+            routeText.textContent = `${transportName} · ${route.points.length} mapped stops`;
+            if (route.missing_points) {
+              routeText.textContent += ` · ${route.missing_points} missing`;
+            }
+            routeCheckbox.addEventListener('change', () => {
+              setOptimizerRouteToggle(route, routeCheckbox.checked);
+              updateOptimizerMapVisibility();
+            });
+            routeLabel.append(routeCheckbox, routeText);
+            choices.append(routeLabel);
+          }
+          collapseButton.addEventListener('click', () => {
+            choices.hidden = !choices.hidden;
+            collapseButton.textContent = choices.hidden ? 'Expand' : 'Collapse';
+            collapseButton.setAttribute('aria-expanded', String(!choices.hidden));
+          });
+          header.append(item, collapseButton);
+          group.append(header, choices);
+          optimizerMapLegend.append(group);
+        }
         optimizerMapToggleAll.disabled = false;
       }
 
@@ -5517,9 +5696,15 @@
         if (!toggles.length) return;
         const selectAll = !toggles.every(toggle => toggle.checked);
         for (const toggle of toggles) {
-          toggle.checked = selectAll;
-          optimizerMapToggleStates.set(toggle.dataset.mapToggleKey, selectAll);
+          setOptimizerMapToggle(toggle.dataset.mapToggleKey, selectAll);
         }
+        updateOptimizerMapVisibility();
+      });
+
+      optimizerMapToggleRoutes.addEventListener('click', () => {
+        optimizerRouteLinesVisible = !optimizerRouteLinesVisible;
+        optimizerMapToggleRoutes.textContent = optimizerRouteLinesVisible
+          ? 'Hide route lines' : 'Show route lines';
         updateOptimizerMapVisibility();
       });
 
@@ -5603,6 +5788,7 @@
       function renderOptimizerAssignmentMap(data) {
         clearOptimizerMap();
         optimizerMapJobs = data.jobs;
+        optimizerMapRoutes = data.routes || [];
         syncOptimizerJobFilterOptions();
         const loadedJobCount = data.jobs.length;
         const jobPercentage = count => loadedJobCount
@@ -5705,9 +5891,34 @@
             .bindPopup(optimizerMapPopup(job)).addTo(mapItem.layer);
           mapItem.coordinates.push([job.lat, job.lon]);
         });
+        for (const route of optimizerMapRoutes) {
+          optimizerRouteToggleStates.set(route.id, true);
+          if (route.points.length < 2) continue;
+          const coordinates = route.points.map(point => [point.lat, point.lon]);
+          const layer = L.polyline(coordinates, {
+            color: optimizerDepotColor(route.depot_id),
+            weight: 4,
+            opacity: 0.78,
+          });
+          const transportName = route.transport_id || 'Unnamed transport';
+          layer.bindTooltip(`Transport ${transportName}`);
+          optimizerMapLayers.set(`__route__:${route.id}`, {
+            kind: 'route', route, layer, coordinates,
+          });
+        }
+        optimizerMapToggleRoutes.disabled = !optimizerMapRoutes.some(
+          route => route.points.length > 1,
+        );
         for (const depotId of depotIds) {
+          const depotRoutes = optimizerMapRoutes
+            .filter(route => String(route.depot_id) === String(depotId))
+            .sort((left, right) => String(left.transport_id).localeCompare(
+              String(right.transport_id), undefined,
+              { numeric: true, sensitivity: 'base' },
+            ));
           addOptimizerLegend(
             String(depotId), optimizerDepotColor(depotId), `Depot ${depotId}`,
+            false, depotRoutes,
           );
         }
         if (data.changed_count) {

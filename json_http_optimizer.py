@@ -148,11 +148,38 @@ def build_assignment_map(merged_input, output_json):
             input_jobs[job_id] = job
 
     jobs = []
+    map_routes = []
     seen_jobs = set()
-    for route in routes:
+    for route_index, route in enumerate(routes):
         if not isinstance(route, dict) or not isinstance(route.get("deliveries"), list):
             continue
         transport_id = route.get("transportID")
+        route_id = f"{route_index}:{transport_id}"
+        route_points = []
+        route_depot = None
+        missing_points = 0
+        for delivery in route["deliveries"]:
+            if not isinstance(delivery, dict):
+                continue
+            if route_depot is None and delivery.get("depot") is not None:
+                route_depot = str(delivery["depot"])
+            point = points.get(normalized_id(delivery.get("pointId")))
+            if point is None:
+                missing_points += 1
+                continue
+            route_points.append({
+                "lat": point["lat"],
+                "lon": point["lon"],
+                "job_id": str(delivery.get("jobID", "")),
+            })
+        if route_depot is not None:
+            map_routes.append({
+                "id": route_id,
+                "depot_id": route_depot,
+                "transport_id": str(transport_id) if transport_id is not None else "",
+                "points": route_points,
+                "missing_points": missing_points,
+            })
         for delivery in route["deliveries"]:
             if not isinstance(delivery, dict) or "depot" not in delivery:
                 continue
@@ -177,6 +204,7 @@ def build_assignment_map(merged_input, output_json):
                 "original_depot": str(original_depot),
                 "output_depot": str(output_depot),
                 "transport_id": str(transport_id) if transport_id is not None else "",
+                "route_id": route_id,
                 "arrival": delivery.get("arrival"),
                 "changed": normalized_id(original_depot) != normalized_id(output_depot),
             })
@@ -208,6 +236,7 @@ def build_assignment_map(merged_input, output_json):
     return {
         "jobs": jobs,
         "depots": depots,
+        "routes": map_routes,
         "changed_count": sum(1 for job in jobs if job["changed"]),
         "unchanged_count": sum(1 for job in jobs if not job["changed"]),
         "distance_percent": output_distance,

@@ -5204,15 +5204,18 @@
         optimizerMapMessage.textContent = data.jobs.length
           ? '' : 'No handled jobs with map coordinates were found.';
         optimizerMapMessage.classList.remove('file-error');
+        const compareDepotIds = (left, right) => String(left).localeCompare(
+          String(right), undefined, { numeric: true, sensitivity: 'base' },
+        );
         const depotIds = [...new Set(data.jobs.flatMap(job => [
           job.original_depot,
           job.output_depot,
-        ]))];
+        ]))].sort(compareDepotIds);
         const colorDepotIds = [...new Set([
           ...data.depots.map(depot => depot.id),
           ...data.jobs.map(job => job.original_depot),
           ...data.jobs.map(job => job.output_depot),
-        ])];
+        ])].sort(compareDepotIds);
         const palette = [
           '#2563eb', '#16a34a', '#9333ea', '#0891b2', '#ca8a04',
           '#4f46e5', '#0d9488', '#c026d3', '#65a30d', '#0284c7',

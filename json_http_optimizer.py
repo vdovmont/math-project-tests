@@ -180,7 +180,7 @@ def build_assignment_map(merged_input, output_json):
                 "points": route_points,
                 "missing_points": missing_points,
             })
-        for delivery in route["deliveries"]:
+        for stop_number, delivery in enumerate(route["deliveries"], start=1):
             if not isinstance(delivery, dict) or "depot" not in delivery:
                 continue
             job_id = normalized_id(delivery.get("jobID"))
@@ -205,6 +205,7 @@ def build_assignment_map(merged_input, output_json):
                 "output_depot": str(output_depot),
                 "transport_id": str(transport_id) if transport_id is not None else "",
                 "route_id": route_id,
+                "stop_number": stop_number,
                 "arrival": delivery.get("arrival"),
                 "changed": normalized_id(original_depot) != normalized_id(output_depot),
             })

@@ -5579,9 +5579,12 @@
         title.textContent = `Job ${job.job_id}`;
         const details = document.createElement('div');
         details.style.whiteSpace = 'pre-line';
-        details.textContent = job.changed
+        const depotDetails = job.changed
           ? `Original depot: ${job.original_depot}\nOutput depot: ${job.output_depot}`
           : `Depot: ${job.original_depot}`;
+        details.textContent = `${depotDetails}\nTransport ID: ${job.transport_id || '(empty)'}`
+          + `\nStop number: ${job.stop_number}`
+          + `\nArrival time: ${formatOptimizerArrival(job.arrival) || '(empty)'}`;
         content.append(title, details);
         return content;
       }

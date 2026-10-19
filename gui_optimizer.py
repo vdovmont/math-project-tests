@@ -758,10 +758,16 @@ def merge_group(data: object) -> dict[str, object]:
         documents = []
         try:
             for file in initial_files:
-                document = json.loads(file.read_text(encoding="utf-8"))
+                with file.open("r", encoding="utf-8", newline="") as source_file:
+                    source_text = source_file.read()
+                document = json.loads(source_text)
                 if not isinstance(document, dict):
                     raise ValueError(f"'{file.name}' must contain a JSON object.")
-                documents.append((file.name, document))
+                documents.append((
+                    file.name,
+                    document,
+                    optimizer.input_entry_lines(source_text),
+                ))
             merged, report, warning_count, error_count = optimizer.merge_inputs(
                 documents, distance
             )

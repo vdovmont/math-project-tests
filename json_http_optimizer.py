@@ -269,12 +269,99 @@ def display_value(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
+def input_entry_lines(json_text):
+    """Return source lines for entries and their IDs in configured top-level lists."""
+    decoder = json.JSONDecoder()
+    length = len(json_text)
+
+    def skip_whitespace(position):
+        while position < length and json_text[position].isspace():
+            position += 1
+        return position
+
+    def source_line(position):
+        return len(re.findall(r"\r+\n|\r|\n", json_text[:position])) + 1
+
+    def object_id_line(start, end):
+        position = skip_whitespace(start)
+        if position >= end or json_text[position] != "{":
+            return None
+        position += 1
+        while position < end:
+            position = skip_whitespace(position)
+            if position >= end or json_text[position] == "}":
+                return None
+            key_start = position
+            key, position = decoder.raw_decode(json_text, position)
+            position = skip_whitespace(position)
+            if position >= end or json_text[position] != ":":
+                return None
+            position = skip_whitespace(position + 1)
+            if key == "id":
+                return source_line(key_start)
+            _, position = decoder.raw_decode(json_text, position)
+            position = skip_whitespace(position)
+            if position < end and json_text[position] == ",":
+                position += 1
+                continue
+            return None
+
+    position = skip_whitespace(0)
+    if position >= length or json_text[position] != "{":
+        return {}
+    position += 1
+    result = {}
+    wanted_fields = set(OPTIMIZER_MERGE_LIST_FIELDS)
+    while True:
+        position = skip_whitespace(position)
+        if position >= length or json_text[position] == "}":
+            return result
+        key, position = decoder.raw_decode(json_text, position)
+        position = skip_whitespace(position)
+        if position >= length or json_text[position] != ":":
+            return result
+        position = skip_whitespace(position + 1)
+        if key in wanted_fields and position < length and json_text[position] == "[":
+            position += 1
+            lines = []
+            while True:
+                position = skip_whitespace(position)
+                if position >= length or json_text[position] == "]":
+                    position += 1
+                    break
+                entry_start = position
+                _, position = decoder.raw_decode(json_text, position)
+                lines.append({
+                    "entry": source_line(entry_start),
+                    "id": object_id_line(entry_start, position),
+                })
+                position = skip_whitespace(position)
+                if position < length and json_text[position] == ",":
+                    position += 1
+                    continue
+                if position < length and json_text[position] == "]":
+                    position += 1
+                    break
+                return result
+            result[key] = lines
+        else:
+            _, position = decoder.raw_decode(json_text, position)
+        position = skip_whitespace(position)
+        if position < length and json_text[position] == ",":
+            position += 1
+            continue
+        if position < length and json_text[position] == "}":
+            return result
+        return result
+
+
 def compared_fields(documents):
     fields = []
     for configured in OPTIMIZER_MERGE_EQUAL_FIELDS:
         if configured == "options.*":
             option_names = set()
-            for _, document in documents:
+            for item in documents:
+                document = item[1]
                 options = document.get("options", {})
                 if isinstance(options, dict):
                     option_names.update(options)
@@ -302,7 +389,9 @@ def value_key(value):
 def find_value_differences(documents):
     differences = []
     for field in compared_fields(documents):
-        values = [(name, nested_value(document, field)) for name, document in documents]
+        values = [
+            (item[0], nested_value(item[1], field)) for item in documents
+        ]
         if len({value_key(value) for _, value in values}) > 1:
             differences.append((field, values))
     return differences
@@ -310,24 +399,39 @@ def find_value_differences(documents):
 
 def collect_entries(documents, field):
     collected = []
-    for file_name, document in documents:
+    for item in documents:
+        file_name, document = item[:2]
+        source_lines = item[2].get(field, []) if len(item) > 2 else []
         entries = document.get(field, [])
         if not isinstance(entries, list):
             raise ValueError(f"Field '{field}' in '{file_name}' must be a list.")
         for index, entry in enumerate(entries):
+            source_location = source_lines[index] if index < len(source_lines) else None
+            entry_line = (
+                source_location.get("entry")
+                if isinstance(source_location, dict) else source_location
+            )
+            id_line = (
+                source_location.get("id")
+                if isinstance(source_location, dict) else entry_line
+            )
+            location = f"line {entry_line}" if entry_line else f"entry {index + 1}"
+            id_location = f"line {id_line}" if id_line else location
             if not isinstance(entry, dict):
                 raise ValueError(
-                    f"Entry {index + 1} in '{field}' in '{file_name}' must be an object."
+                    f"{location.capitalize()} in '{field}' in '{file_name}' must be an object."
                 )
-            collected.append((file_name, index, copy.deepcopy(entry)))
+            collected.append((file_name, location, id_location, copy.deepcopy(entry)))
     return collected
 
 
 def duplicate_ids(entries):
     occurrences = defaultdict(list)
-    for file_name, index, entry in entries:
+    for file_name, _, id_location, entry in entries:
         if "id" in entry:
-            occurrences[value_key(entry["id"])].append((file_name, index, entry["id"]))
+            occurrences[value_key(entry["id"])].append(
+                (file_name, id_location, entry["id"])
+            )
     return [items for items in occurrences.values() if len(items) > 1]
 
 
@@ -371,7 +475,8 @@ def merge_inputs(documents, distance_percent):
         for field, occurrences in fatal_duplicates:
             report.extend(["", f"Field: {field}, ID: {display_value(occurrences[0][2])}"])
             report.extend(
-                f"  {file_name}, entry {index + 1}" for file_name, index, _ in occurrences
+                f"  {file_name}, {location}"
+                for file_name, location, _ in occurrences
             )
         return None, "\n".join(report) + "\n", 0, len(fatal_duplicates)
 
@@ -380,12 +485,12 @@ def merge_inputs(documents, distance_percent):
     for field in OPTIMIZER_MERGE_LIST_FIELDS:
         used_ids = {}
         merged_entries = []
-        for file_name, index, entry in collected[field]:
+        for file_name, _, id_location, entry in collected[field]:
             if field in OPTIMIZER_MERGE_RENAME_DUPLICATE_FIELDS and "id" in entry:
                 original_id = entry["id"]
                 candidate_key = value_key(original_id)
                 if candidate_key in used_ids:
-                    first_file, first_index = used_ids[candidate_key]
+                    first_file, first_location = used_ids[candidate_key]
                     suffix = 1
                     candidate = f"{original_id}_{suffix}"
                     while value_key(candidate) in used_ids:
@@ -395,10 +500,10 @@ def merge_inputs(documents, distance_percent):
                     candidate_key = value_key(candidate)
                     warnings.append(
                         f"{field}: duplicate ID {display_value(original_id)} in "
-                        f"{first_file}, entry {first_index + 1} and {file_name}, "
-                        f"entry {index + 1}; the latter was changed to {display_value(candidate)}."
+                        f"{first_file}, {first_location} and {file_name}, "
+                        f"{id_location}; the latter was changed to {display_value(candidate)}."
                     )
-                used_ids[candidate_key] = (file_name, index)
+                used_ids[candidate_key] = (file_name, id_location)
             merged_entries.append(entry)
         merged[field] = merged_entries
 

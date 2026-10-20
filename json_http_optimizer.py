@@ -430,7 +430,7 @@ def duplicate_ids(entries):
     for file_name, _, id_location, entry in entries:
         if "id" in entry:
             occurrences[value_key(entry["id"])].append(
-                (file_name, id_location, entry["id"])
+                (file_name, id_location, entry["id"], entry.get("extraID", MISSING))
             )
     return [items for items in occurrences.values() if len(items) > 1]
 
@@ -473,10 +473,13 @@ def merge_inputs(documents, distance_percent):
     if fatal_duplicates:
         report.extend(["Merge failed", "", "Matching job IDs were found:"])
         for field, occurrences in fatal_duplicates:
-            report.extend(["", f"Field: {field}, ID: {display_value(occurrences[0][2])}"])
+            heading = f"Field: {field}, ID: {display_value(occurrences[0][2])}"
+            if field == "jobList":
+                heading += f", extraID: {display_value(occurrences[0][3])}"
+            report.extend(["", heading])
             report.extend(
                 f"  {file_name}, {location}"
-                for file_name, location, _ in occurrences
+                for file_name, location, *_ in occurrences
             )
         return None, "\n".join(report) + "\n", 0, len(fatal_duplicates)
 

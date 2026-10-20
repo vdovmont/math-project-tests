@@ -20,6 +20,7 @@ from config import (
     OPTIMIZER_MAX_SAVED_PROFILES as MAX_SAVED_PROFILES,
     OPTIMIZER_GROUPS_FOLDER,
     OPTIMIZER_GROUP_SELECTION_FILE,
+    UKRAINE_BORDER_FILE,
     OPTIMIZER_MAX_GROUP_NAME_LENGTH,
     MAX_VIEW_FILE_BYTES,
     MAX_UPLOAD_FILE_BYTES,
@@ -874,7 +875,7 @@ def optimizer_map(group_id: object, output_path: object) -> dict[str, object]:
 
 GET_PATHS = frozenset({
     "/api/optimizer/config", "/api/optimizer/groups", "/api/optimizer/file",
-    "/api/optimizer/status", "/api/optimizer/map",
+    "/api/optimizer/status", "/api/optimizer/map", "/api/optimizer/ukraine-border",
 })
 POST_PATHS = frozenset({
     "/api/optimizer/profile/save", "/api/optimizer/profile/delete",
@@ -901,6 +902,8 @@ def handle_get(request) -> None:
             ))
         except (ValueError, UnicodeError) as error:
             request.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+    elif parsed.path == "/api/optimizer/ukraine-border":
+        request.send_json(json.loads(UKRAINE_BORDER_FILE.read_text(encoding="utf-8")))
     else:
         try:
             query = parse_qs(parsed.query)

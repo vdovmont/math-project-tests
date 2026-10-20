@@ -20,6 +20,7 @@ JSON_DATA_FOLDER = JSON_DATA_ROOT / "initial"
 TEST_RESULTS_FOLDER = DATA_FOLDER / "tests" / "test-results"
 OPTIMIZER_DATA_FOLDER = DATA_FOLDER / "optimizer"
 OPTIMIZER_GROUPS_FOLDER = OPTIMIZER_DATA_FOLDER / "groups"
+UKRAINE_BORDER_FILE = PROJECT_FOLDER / "map-data" / "ukraine-border.geojson"
 
 # -----------------------------------------------------------------------------
 # start.py

@@ -9,6 +9,7 @@
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7.2.0/turf.min.js"></script>
   <style>
     :root {
       color-scheme: dark;
@@ -4328,6 +4329,7 @@
       let completedOptimizerRunId = 0;
       let optimizerMergeConsoleVisible = true;
       let optimizerMap = null;
+      let optimizerUkraineBorderPromise = null;
       let optimizerMapJobs = [];
       let optimizerMapRoutes = [];
       let optimizerRouteLinesVisible = false;
@@ -5789,8 +5791,11 @@
         return result;
       }
 
-      function addOptimizerDepotHues(depots, distancePercent) {
+      function addOptimizerDepotHues(depots, distancePercent, ukraineBorder) {
         if (depots.length < 2) return;
+        if (typeof turf === 'undefined') {
+          throw new Error('The map geometry library could not load. Check the internet connection and refresh.');
+        }
         const projected = depots.map(depot => ({
           depot,
           point: L.CRS.EPSG3857.project(L.latLng(depot.lat, depot.lon)),
@@ -5824,21 +5829,30 @@
           if (polygon.length < 3) continue;
           const mapItem = optimizerMapLayers.get(String(current.depot.id));
           if (!mapItem) continue;
-          L.polygon(
-            polygon.map(point => L.CRS.EPSG3857.unproject(point)),
-            {
+          const ring = polygon.map(point => {
+            const latLng = L.CRS.EPSG3857.unproject(point);
+            return [latLng.lng, latLng.lat];
+          });
+          ring.push([...ring[0]]);
+          const clippedHue = turf.intersect(turf.featureCollection([
+            turf.polygon([ring]),
+            ukraineBorder,
+          ]));
+          if (!clippedHue) continue;
+          L.geoJSON(clippedHue, {
+            style: {
               color: optimizerDepotColor(current.depot.id),
               weight: 1,
               opacity: 0.75,
               fillColor: optimizerDepotColor(current.depot.id),
               fillOpacity: 0.18,
-              interactive: false,
             },
-          ).addTo(mapItem.layer);
+            interactive: false,
+          }).addTo(mapItem.layer);
         }
       }
 
-      function renderOptimizerAssignmentMap(data) {
+      function renderOptimizerAssignmentMap(data, ukraineBorder) {
         clearOptimizerMap();
         optimizerMapJobs = data.jobs;
         optimizerMapRoutes = data.routes || [];
@@ -5890,7 +5904,9 @@
             kind: 'depot', layer: L.layerGroup(), coordinates: [],
           });
         }
-        addOptimizerDepotHues(data.depots, Number(data.distance_percent) || 0);
+        addOptimizerDepotHues(
+          data.depots, Number(data.distance_percent) || 0, ukraineBorder,
+        );
         for (const depot of data.depots) {
           const mapItem = optimizerMapLayers.get(String(depot.id));
           if (!mapItem) continue;
@@ -5997,7 +6013,12 @@
         optimizerMapMessage.classList.remove('file-error');
         try {
           const query = new URLSearchParams({ group: group.id, output });
-          renderOptimizerAssignmentMap(await fetchJson(`/api/optimizer/map?${query}`));
+          optimizerUkraineBorderPromise ||= fetchJson('/api/optimizer/ukraine-border');
+          const [mapData, ukraineBorder] = await Promise.all([
+            fetchJson(`/api/optimizer/map?${query}`),
+            optimizerUkraineBorderPromise,
+          ]);
+          renderOptimizerAssignmentMap(mapData, ukraineBorder);
         } catch (error) {
           optimizerMapMessage.textContent = error.message;
           optimizerMapMessage.classList.add('file-error');

@@ -5112,8 +5112,17 @@
         showOptimizerMergeConsoleView();
         optimizerMergeButton.disabled = true;
         optimizerMergeButton.textContent = 'Merging...';
-        optimizerMergeConsole.textContent =
-          `Merging ${group.initial.length} initial JSON file(s) from ${group.name}...`;
+        const mergeActivityText =
+          `Merging ${group.initial.length} initial JSON file(s) from "${group.name}"`;
+        let mergeActivityDots = 3;
+        const showMergeActivity = () => {
+          optimizerMergeConsole.textContent = `${mergeActivityText}\n${'.'.repeat(mergeActivityDots)}`;
+        };
+        showMergeActivity();
+        const mergeActivityTimer = window.setInterval(() => {
+          mergeActivityDots = mergeActivityDots % 3 + 1;
+          showMergeActivity();
+        }, 1000);
         errorView.textContent = '';
         try {
           const data = await fetchJson('/api/optimizer/merge', {
@@ -5124,6 +5133,7 @@
               distance_percent: distanceInput.value,
             }),
           });
+          window.clearInterval(mergeActivityTimer);
           optimizerGroups = data.groups;
           selectedOptimizerGroupId = data.selected_group_id;
           optimizerMergeConsole.textContent = data.merge_status === 'failed'
@@ -5134,6 +5144,7 @@
           optimizerOpenResult.disabled = true;
           renderOptimizerGroups();
         } catch (error) {
+          window.clearInterval(mergeActivityTimer);
           optimizerMergeConsole.textContent = `Merge failed\n\n${error.message}`;
           errorView.textContent = error.message;
           updateOptimizerRunButton();

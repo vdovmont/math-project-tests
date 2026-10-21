@@ -474,13 +474,17 @@ def merge_inputs(documents, distance_percent):
         report.extend(["Merge failed", "", "Matching job IDs were found:"])
         for field, occurrences in fatal_duplicates:
             heading = f"Field: {field}, ID: {display_value(occurrences[0][2])}"
-            if field == "jobList":
-                heading += f", extraID: {display_value(occurrences[0][3])}"
             report.extend(["", heading])
-            report.extend(
-                f"  {file_name}, {location}"
-                for file_name, location, *_ in occurrences
-            )
+            if field == "jobList":
+                report.extend(
+                    f"  extraID: {display_value(extra_id)}:  {file_name}, {location}"
+                    for file_name, location, _, extra_id in occurrences
+                )
+            else:
+                report.extend(
+                    f"  {file_name}, {location}"
+                    for file_name, location, *_ in occurrences
+                )
         return None, "\n".join(report) + "\n", 0, len(fatal_duplicates)
 
     merged = copy.deepcopy(documents[0][1])

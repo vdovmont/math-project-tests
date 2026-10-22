@@ -1144,7 +1144,7 @@
 
     .optimizer-jobs-table {
       width: 100%;
-      min-width: 1010px;
+      min-width: 1100px;
       table-layout: fixed;
       border-collapse: collapse;
       font-size: 12px;
@@ -1175,6 +1175,19 @@
 
     .optimizer-jobs-table th button:hover {
       color: var(--accent);
+    }
+
+    .optimizer-job-map-heading {
+      display: block;
+      padding: 10px 12px;
+      color: var(--text);
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .optimizer-job-map-button {
+      padding: 5px 8px;
+      white-space: nowrap;
     }
 
     .optimizer-jobs-filter-row th {
@@ -1915,6 +1928,7 @@
                 <col style="width: 130px">
                 <col style="width: 160px">
                 <col style="width: 190px">
+                <col style="width: 90px">
               </colgroup>
               <thead>
                 <tr>
@@ -1925,6 +1939,7 @@
                   <th><button type="button" data-optimizer-job-sort="output_depot">Current depot</button></th>
                   <th><button type="button" data-optimizer-job-sort="transport_id">Transport ID</button></th>
                   <th><button type="button" data-optimizer-job-sort="arrival">Arrival time</button></th>
+                  <th><span class="optimizer-job-map-heading">Map</span></th>
                 </tr>
                 <tr id="optimizer-jobs-filter-row" class="optimizer-jobs-filter-row" hidden>
                   <th>
@@ -1969,6 +1984,7 @@
                       <div class="optimizer-column-filter-options"></div>
                     </details>
                   </th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody id="optimizer-jobs-table-body"></tbody>
@@ -5583,6 +5599,14 @@
             cell.textContent = value ?? '';
             return cell;
           }));
+          const mapCell = document.createElement('td');
+          const mapButton = document.createElement('button');
+          mapButton.type = 'button';
+          mapButton.className = 'small-button optimizer-job-map-button';
+          mapButton.textContent = 'On map';
+          mapButton.addEventListener('click', () => focusOptimizerJobOnMap(job));
+          mapCell.append(mapButton);
+          row.append(mapCell);
           return row;
         }));
         optimizerJobsTableEmpty.hidden = visibleJobs.length > 0;
@@ -5692,6 +5716,20 @@
           + `\nArrival time: ${formatOptimizerArrival(job.arrival) || '(empty)'}`;
         content.append(title, details);
         return content;
+      }
+
+      function focusOptimizerJobOnMap(job) {
+        if (!optimizerMap) return;
+        const mapItem = [...optimizerMapLayers.values()].find(
+          item => item.kind === 'job' && item.job === job,
+        );
+        if (!mapItem?.marker) return;
+        if (!optimizerMap.hasLayer(mapItem.layer)) mapItem.layer.addTo(optimizerMap);
+        optimizerMap.setView([job.lat, job.lon], Math.max(optimizerMap.getZoom(), 17), {
+          animate: true,
+        });
+        mapItem.marker.openPopup();
+        optimizerMap.getContainer().scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
 
       function fitVisibleOptimizerMarks() {
@@ -6009,7 +6047,7 @@
             className: 'optimizer-job-icon', html: markerBody,
             iconSize: [22, 22], iconAnchor: [11, 11],
           });
-          L.marker([job.lat, job.lon], { icon })
+          mapItem.marker = L.marker([job.lat, job.lon], { icon })
             .bindPopup(optimizerMapPopup(job)).addTo(mapItem.layer);
           mapItem.coordinates.push([job.lat, job.lon]);
         });

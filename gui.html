@@ -5686,7 +5686,8 @@
         const depotDetails = job.changed
           ? `Original depot: ${job.original_depot}\nOutput depot: ${job.output_depot}`
           : `Depot: ${job.original_depot}`;
-        details.textContent = `${depotDetails}\nTransport ID: ${job.transport_id || '(empty)'}`
+        details.textContent = `extraID: ${job.job_extra_id || '(empty)'}\n${depotDetails}`
+          + `\nTransport ID: ${job.transport_id || '(empty)'}`
           + `\nStop number: ${job.stop_number}`
           + `\nArrival time: ${formatOptimizerArrival(job.arrival) || '(empty)'}`;
         content.append(title, details);

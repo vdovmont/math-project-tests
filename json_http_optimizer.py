@@ -28,6 +28,7 @@ MISSING = object()
 JOBS_TAKEN_PATTERN = re.compile(
     r"\b(\d+)\s*/\s*(\d+)\s+jobs\s+taken\b", re.IGNORECASE
 )
+MERGED_JOB_ID_SUFFIX_PATTERN = re.compile(r"_\d+(?:_\d+)?$")
 
 
 class OptimizationStopped(Exception):
@@ -194,7 +195,7 @@ def build_assignment_map(merged_input, output_json):
             original_depot = job.get("depotID")
             output_depot = delivery.get("depot")
             jobs.append({
-                "job_id": str(job.get("id")),
+                "job_id": MERGED_JOB_ID_SUFFIX_PATTERN.sub("", str(job.get("id"))),
                 "job_extra_id": (
                     str(job.get("extraID")) if job.get("extraID") is not None else ""
                 ),

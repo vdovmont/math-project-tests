@@ -1852,7 +1852,9 @@
                 <div class="file-viewer-header optimizer-viewer-header">
                   <span>Merge console</span>
                   <button class="small-button optimizer-toggle-merge-console" type="button">Hide merge console</button>
-                  <span></span>
+                  <span class="file-viewer-meta">
+                    <button id="optimizer-copy-merge-console" class="copy-file-button" type="button">Copy</button>
+                  </span>
                 </div>
                 <pre id="optimizer-merge-console" class="file-content"
                   aria-live="polite">Waiting for an Optimizer merge.</pre>
@@ -4255,6 +4257,7 @@
       );
       const optimizerMergeConsoleView = document.querySelector('#optimizer-merge-console-view');
       const optimizerMergeConsole = document.querySelector('#optimizer-merge-console');
+      const optimizerCopyMergeConsole = document.querySelector('#optimizer-copy-merge-console');
       const newGroupDialog = document.querySelector('#optimizer-new-group-dialog');
       const newGroupForm = document.querySelector('#optimizer-new-group-form');
       const newGroupName = document.querySelector('#optimizer-new-group-name');
@@ -4321,6 +4324,7 @@
       let activeOptimizerFile = null;
       let loadedOptimizerFileContent = null;
       let optimizerCopyFeedbackTimeout = null;
+      let optimizerMergeCopyFeedbackTimeout = null;
       let lastOptimizerResultFile = null;
       let lastOptimizerResultHasZeroJobs = false;
       let optimizerRunRunning = false;
@@ -5055,6 +5059,43 @@
           window.alert(`Could not copy the file: ${error.message}`);
         } finally {
           optimizerCopyFile.disabled = false;
+        }
+      });
+      optimizerCopyMergeConsole.addEventListener('click', async () => {
+        optimizerCopyMergeConsole.disabled = true;
+        try {
+          const contentToCopy = optimizerMergeConsole.textContent;
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(contentToCopy);
+          } else {
+            const copyArea = document.createElement('textarea');
+            copyArea.value = contentToCopy;
+            copyArea.setAttribute('readonly', '');
+            copyArea.style.position = 'fixed';
+            copyArea.style.opacity = '0';
+            document.body.append(copyArea);
+            try {
+              copyArea.select();
+              if (!document.execCommand('copy')) {
+                throw new Error('The browser rejected the copy command.');
+              }
+            } finally {
+              copyArea.remove();
+            }
+          }
+          optimizerCopyMergeConsole.textContent = 'Copied!';
+          if (optimizerMergeCopyFeedbackTimeout !== null) {
+            window.clearTimeout(optimizerMergeCopyFeedbackTimeout);
+          }
+          optimizerMergeCopyFeedbackTimeout = window.setTimeout(() => {
+            optimizerCopyMergeConsole.textContent = 'Copy';
+            optimizerMergeCopyFeedbackTimeout = null;
+          }, 1500);
+        } catch (error) {
+          optimizerCopyMergeConsole.textContent = 'Copy failed';
+          window.alert(`Could not copy the merge console: ${error.message}`);
+        } finally {
+          optimizerCopyMergeConsole.disabled = false;
         }
       });
       optimizerRunButton.addEventListener('click', async () => {

@@ -13,9 +13,9 @@ from config import (
     OPTIMIZER_BASE_URL as BASE_URL,
     DISTANCE_PERCENT,
     OPTIMIZER_MERGE_EQUAL_FIELDS,
-    OPTIMIZER_MERGE_FATAL_DUPLICATE_FIELDS,
     OPTIMIZER_MERGE_LIST_FIELDS,
     OPTIMIZER_MERGE_RENAME_DUPLICATE_FIELDS,
+    OPTIMIZER_MERGE_UNIQUE_FIELDS,
     REQUEST_TIMEOUT_SECONDS,
     START_REQUEST,
     STATE_POLL_INTERVAL_SECONDS,
@@ -282,29 +282,31 @@ def input_entry_lines(json_text):
     def source_line(position):
         return len(re.findall(r"\r+\n|\r|\n", json_text[:position])) + 1
 
-    def object_id_line(start, end):
+    def object_key_lines(start, end, wanted_keys):
+        lines = {}
         position = skip_whitespace(start)
         if position >= end or json_text[position] != "{":
-            return None
+            return lines
         position += 1
         while position < end:
             position = skip_whitespace(position)
             if position >= end or json_text[position] == "}":
-                return None
+                return lines
             key_start = position
             key, position = decoder.raw_decode(json_text, position)
             position = skip_whitespace(position)
             if position >= end or json_text[position] != ":":
-                return None
+                return lines
             position = skip_whitespace(position + 1)
-            if key == "id":
-                return source_line(key_start)
+            if key in wanted_keys:
+                lines[key] = source_line(key_start)
             _, position = decoder.raw_decode(json_text, position)
             position = skip_whitespace(position)
             if position < end and json_text[position] == ",":
                 position += 1
                 continue
-            return None
+            return lines
+        return lines
 
     position = skip_whitespace(0)
     if position >= length or json_text[position] != "{":
@@ -331,9 +333,11 @@ def input_entry_lines(json_text):
                     break
                 entry_start = position
                 _, position = decoder.raw_decode(json_text, position)
+                key_lines = object_key_lines(entry_start, position, {"id", "extraID"})
                 lines.append({
                     "entry": source_line(entry_start),
-                    "id": object_id_line(entry_start, position),
+                    "id": key_lines.get("id"),
+                    "extraID": key_lines.get("extraID"),
                 })
                 position = skip_whitespace(position)
                 if position < length and json_text[position] == ",":
@@ -401,6 +405,12 @@ def collect_entries(documents, field):
     collected = []
     for item in documents:
         file_name, document = item[:2]
+        raw_task_id = document.get("task_id")
+        task_id_parts = (
+            [part.strip() for part in raw_task_id.split("/") if part.strip()]
+            if isinstance(raw_task_id, str) else []
+        )
+        task_id_suffix = task_id_parts[-1] if task_id_parts else None
         source_lines = item[2].get(field, []) if len(item) > 2 else []
         entries = document.get(field, [])
         if not isinstance(entries, list):
@@ -415,22 +425,33 @@ def collect_entries(documents, field):
                 source_location.get("id")
                 if isinstance(source_location, dict) else entry_line
             )
+            extra_id_line = (
+                source_location.get("extraID")
+                if isinstance(source_location, dict) else entry_line
+            )
             location = f"line {entry_line}" if entry_line else f"entry {index + 1}"
             id_location = f"line {id_line}" if id_line else location
+            extra_id_location = f"line {extra_id_line}" if extra_id_line else location
             if not isinstance(entry, dict):
                 raise ValueError(
                     f"{location.capitalize()} in '{field}' in '{file_name}' must be an object."
                 )
-            collected.append((file_name, location, id_location, copy.deepcopy(entry)))
+            collected.append(
+                (
+                    file_name, location, id_location, extra_id_location,
+                    task_id_suffix, copy.deepcopy(entry),
+                )
+            )
     return collected
 
 
-def duplicate_ids(entries):
+def duplicate_values(entries, key, location_index):
     occurrences = defaultdict(list)
-    for file_name, _, id_location, entry in entries:
-        if "id" in entry:
-            occurrences[value_key(entry["id"])].append(
-                (file_name, id_location, entry["id"], entry.get("extraID", MISSING))
+    for entry_data in entries:
+        file_name, entry = entry_data[0], entry_data[-1]
+        if key in entry:
+            occurrences[value_key(entry[key])].append(
+                (file_name, entry_data[location_index], entry[key])
             )
     return [items for items in occurrences.values() if len(items) > 1]
 
@@ -467,24 +488,24 @@ def merge_inputs(documents, distance_percent):
         return None, "\n".join(report) + "\n", 0, 1
 
     fatal_duplicates = []
-    for field in OPTIMIZER_MERGE_FATAL_DUPLICATE_FIELDS:
-        for occurrences in duplicate_ids(collected.get(field, [])):
+    for field, duplicate_key in OPTIMIZER_MERGE_UNIQUE_FIELDS.items():
+        location_index = 3 if duplicate_key == "extraID" else 2
+        for occurrences in duplicate_values(
+            collected.get(field, []), duplicate_key, location_index
+        ):
             fatal_duplicates.append((field, occurrences))
     if fatal_duplicates:
-        report.extend(["Merge failed", "", "Matching job IDs were found:"])
+        report.extend([
+            "Merge failed", "", "Duplicate values were found in fields that must be unique:"
+        ])
         for field, occurrences in fatal_duplicates:
-            heading = f"Field: {field}, ID: {display_value(occurrences[0][2])}"
+            key_name = OPTIMIZER_MERGE_UNIQUE_FIELDS[field]
+            heading = f"Field: {field}, {key_name}: {display_value(occurrences[0][2])}"
             report.extend(["", heading])
-            if field == "jobList":
-                report.extend(
-                    f"  extraID: {display_value(extra_id)}:  {file_name}, {location}"
-                    for file_name, location, _, extra_id in occurrences
-                )
-            else:
-                report.extend(
-                    f"  {file_name}, {location}"
-                    for file_name, location, *_ in occurrences
-                )
+            report.extend(
+                f"  {file_name}, {location}"
+                for file_name, location, *_ in occurrences
+            )
         return None, "\n".join(report) + "\n", 0, len(fatal_duplicates)
 
     merged = copy.deepcopy(documents[0][1])
@@ -492,7 +513,56 @@ def merge_inputs(documents, distance_percent):
     for field in OPTIMIZER_MERGE_LIST_FIELDS:
         used_ids = {}
         merged_entries = []
-        for file_name, _, id_location, entry in collected[field]:
+        job_id_renames = {}
+        field_entries = collected[field]
+        duplicate_job_ids = set()
+        if field == "jobList":
+            id_counts = defaultdict(int)
+            for *_, candidate_entry in field_entries:
+                if "id" in candidate_entry:
+                    id_counts[value_key(candidate_entry["id"])] += 1
+            duplicate_job_ids = {
+                candidate_key for candidate_key, count in id_counts.items() if count > 1
+            }
+            used_ids = {
+                value_key(candidate_entry["id"]): None
+                for *_, candidate_entry in field_entries
+                if "id" in candidate_entry
+            }
+        if field == "jobList" and duplicate_job_ids:
+            missing_task_ids = [
+                (file_name, id_location)
+                for file_name, _, id_location, _, task_id_suffix, entry in field_entries
+                if "id" in entry
+                and value_key(entry["id"]) in duplicate_job_ids
+                and task_id_suffix is None
+            ]
+            if missing_task_ids:
+                report.extend([
+                    "Merge failed", "",
+                    "Duplicate job IDs could not be renamed because task_id has no usable value:",
+                ])
+                report.extend(
+                    f"  {file_name}, {id_location}"
+                    for file_name, id_location in missing_task_ids
+                )
+                return None, "\n".join(report) + "\n", 0, len(missing_task_ids)
+        for file_name, _, id_location, _, task_id_suffix, entry in field_entries:
+            if field == "jobList" and "id" in entry:
+                original_id = entry["id"]
+                original_key = value_key(original_id)
+                if original_key in duplicate_job_ids:
+                    candidate = f"{original_id}_{task_id_suffix}"
+                    collision_number = 2
+                    while value_key(candidate) in used_ids:
+                        candidate = f"{original_id}_{task_id_suffix}_{collision_number}"
+                        collision_number += 1
+                    entry["id"] = candidate
+                    used_ids[value_key(candidate)] = (file_name, id_location)
+                    rename_group = job_id_renames.setdefault(
+                        original_key, {"original": original_id, "entries": []}
+                    )
+                    rename_group["entries"].append((candidate, file_name, id_location))
             if field in OPTIMIZER_MERGE_RENAME_DUPLICATE_FIELDS and "id" in entry:
                 original_id = entry["id"]
                 candidate_key = value_key(original_id)
@@ -512,6 +582,23 @@ def merge_inputs(documents, distance_percent):
                     )
                 used_ids[candidate_key] = (file_name, id_location)
             merged_entries.append(entry)
+        rename_column_width = max(
+            (
+                len(f"{rename_group['original']} -> {candidate}")
+                for rename_group in job_id_renames.values()
+                for candidate, _, _ in rename_group["entries"]
+            ),
+            default=0,
+        )
+        for rename_group in job_id_renames.values():
+            original_id = rename_group["original"]
+            warning_lines = [f"jobList: duplicate ID {original_id} renamed:"]
+            for candidate, file_name, id_location in rename_group["entries"]:
+                rename_text = f"{original_id} -> {candidate}"
+                warning_lines.append(
+                    f"    {rename_text:<{rename_column_width}}: {file_name}, {id_location}"
+                )
+            warnings.append("\n".join(warning_lines))
         merged[field] = merged_entries
 
     empty_list_warnings = [

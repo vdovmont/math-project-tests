@@ -61,10 +61,12 @@ OPTIMIZER_MERGE_EQUAL_FIELDS = (
     "router_url",
     "options.*",
 )
-# These arrays are concatenated in this order. Duplicate IDs are fatal only for
-# fields listed as fatal. IDs are renamed only for fields in the rename list.
+# These arrays are concatenated in this order. Values configured as unique make
+# the merge fail when duplicated. Duplicate job IDs are all suffixed with the
+# final non-empty segment of their input's task_id; IDs in the rename list keep
+# their first occurrence and suffix later occurrences.
 OPTIMIZER_MERGE_LIST_FIELDS = ("depotList", "jobList", "points", "trList")
-OPTIMIZER_MERGE_FATAL_DUPLICATE_FIELDS = ("jobList",)
+OPTIMIZER_MERGE_UNIQUE_FIELDS = {"jobList": "extraID"}
 OPTIMIZER_MERGE_RENAME_DUPLICATE_FIELDS = ("depotList", "trList")
 
 # -----------------------------------------------------------------------------

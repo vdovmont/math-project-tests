@@ -12,16 +12,18 @@ from urllib.parse import urlparse
 
 import gui_tester
 import gui_optimizer
+import gui_help
 from project_storage import PROJECT_FOLDER, prepare_storage
 from settings_storage import UrlStorageError
 
 from config import (
     GUI_URL,
     HTML_FILE,
+    HELP_MAX_REQUEST_BODY_BYTES,
     MAX_REQUEST_BODY_BYTES,
 )
 
-GUI_MODULES = (gui_tester, gui_optimizer)
+GUI_MODULES = (gui_tester, gui_optimizer, gui_help)
 
 
 class GuiRequestHandler(BaseHTTPRequestHandler):
@@ -69,11 +71,12 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
         except ValueError:
             self.send_json({"error": "Invalid Content-Length."}, HTTPStatus.BAD_REQUEST)
             return
-        max_body_size = (
-            gui_tester.MAX_UPLOAD_REQUEST_BODY_BYTES
-            if path in {"/api/add-test-type", "/api/optimizer/files/add"}
-            else MAX_REQUEST_BODY_BYTES
-        )
+        if path in {"/api/add-test-type", "/api/optimizer/files/add"}:
+            max_body_size = gui_tester.MAX_UPLOAD_REQUEST_BODY_BYTES
+        elif path in {"/api/help/save", "/api/help/image/upload"}:
+            max_body_size = HELP_MAX_REQUEST_BODY_BYTES
+        else:
+            max_body_size = MAX_REQUEST_BODY_BYTES
         if content_length <= 0 or content_length > max_body_size:
             self.send_json({"error": "Invalid request-body size."}, HTTPStatus.BAD_REQUEST)
             return

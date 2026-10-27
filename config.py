@@ -20,6 +20,7 @@ JSON_DATA_FOLDER = JSON_DATA_ROOT / "initial"
 TEST_RESULTS_FOLDER = DATA_FOLDER / "tests" / "test-results"
 OPTIMIZER_DATA_FOLDER = DATA_FOLDER / "optimizer"
 OPTIMIZER_GROUPS_FOLDER = OPTIMIZER_DATA_FOLDER / "groups"
+HELP_IMAGES_FOLDER = DATA_FOLDER / "help-images"
 UKRAINE_BORDER_FILE = PROJECT_FOLDER / "map-data" / "ukraine-border.geojson"
 
 # -----------------------------------------------------------------------------
@@ -97,3 +98,14 @@ OPTIMIZER_GROUP_SELECTION_FILE = SETTINGS_FOLDER / "optimizer_group_selection.js
 OPTIMIZER_MAX_PROFILE_NAME_LENGTH = 80
 OPTIMIZER_MAX_SAVED_PROFILES = 100
 OPTIMIZER_MAX_GROUP_NAME_LENGTH = 80
+
+# -----------------------------------------------------------------------------
+# gui_help.py
+# -----------------------------------------------------------------------------
+HELP_EDITOR_USERNAME = "admin"
+HELP_EDITOR_PASSWORD = "123"
+TESTER_HELP_FILE = SETTINGS_FOLDER / "tester_help.json"
+OPTIMIZER_HELP_FILE = SETTINGS_FOLDER / "optimizer_help.json"
+HELP_SESSION_SECONDS = 8 * 60 * 60
+HELP_MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024
+HELP_MAX_IMAGE_BYTES = 8 * 1024 * 1024

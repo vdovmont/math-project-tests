@@ -123,6 +123,369 @@
       background: var(--accent-dark);
     }
 
+    .tabs .help-tab-button {
+      margin-left: auto;
+    }
+
+    .help-workspace {
+      display: grid;
+      grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+      min-height: 650px;
+      overflow: hidden;
+    }
+
+    .help-sidebar {
+      padding: 18px;
+      border-right: 1px solid var(--border);
+      background: #0b1120;
+    }
+
+    .help-sidebar-heading,
+    .help-article-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .help-sidebar-heading h2,
+    .help-article-heading h2 {
+      margin: 0;
+    }
+
+    .help-article-heading {
+      margin-bottom: 24px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .help-article-heading h2 {
+      font-size: 32px;
+      line-height: 1.2;
+      letter-spacing: -.02em;
+    }
+
+    .help-list {
+      display: grid;
+      gap: 7px;
+    }
+
+    .help-sidebar [data-help-editor-controls] {
+      margin-bottom: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .help-list-item {
+      display: flex;
+      align-items: stretch;
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--field);
+    }
+
+    .help-list-item:hover,
+    .help-list-item.active {
+      border-color: var(--accent);
+      background: var(--accent-dark);
+    }
+
+    .help-list-item.drag-before {
+      box-shadow: 0 -3px 0 var(--accent);
+    }
+
+    .help-list-item.drag-after {
+      box-shadow: 0 3px 0 var(--accent);
+    }
+
+    .help-drag-handle {
+      display: grid;
+      grid-template-columns: repeat(2, 3px);
+      place-content: center;
+      gap: 3px;
+      width: 28px;
+      flex: 0 0 28px;
+      border: 0;
+      border-right: 1px solid var(--border);
+      background: transparent;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    .help-drag-handle:active {
+      cursor: grabbing;
+    }
+
+    .help-drag-handle span {
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: var(--muted);
+      pointer-events: none;
+    }
+
+    .help-list-button {
+      width: 100%;
+      min-width: 0;
+      padding: 9px 10px;
+      border: 0;
+      border-radius: 0 7px 7px 0;
+      background: transparent;
+      color: var(--text);
+      text-align: left;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .help-article {
+      min-width: 0;
+      padding: 24px 28px;
+    }
+
+    .help-content {
+      margin: 0;
+      color: var(--text);
+      font: 18px/1.65 Inter, ui-sans-serif, system-ui, sans-serif;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    .help-content.rich {
+      white-space: normal;
+    }
+
+    .help-content.rich img,
+    .help-rich-editor img {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      margin: 14px 0;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+    }
+
+    .help-editor-toolbar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-bottom: 0;
+      border-radius: 7px 7px 0 0;
+      background: #0b1120;
+      flex: 0 0 auto;
+    }
+
+    .help-editor-toolbar input[hidden] {
+      display: none;
+    }
+
+    .help-editor-size-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding-left: 8px;
+      border-left: 1px solid var(--border);
+    }
+
+    .help-editor-size-group .help-editor-size-label {
+      margin: 0 2px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .help-font-size-dropdown {
+      position: relative;
+      width: 78px;
+      min-width: 78px;
+    }
+
+    .help-font-size-dropdown summary {
+      padding: 6px 26px 6px 8px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--field);
+      color: var(--text);
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .help-font-size-dropdown summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .help-font-size-dropdown summary::after {
+      content: '\25BE';
+      position: absolute;
+      right: 9px;
+      color: var(--muted);
+    }
+
+    .help-font-size-options {
+      position: absolute;
+      z-index: 20;
+      top: calc(100% + 4px);
+      left: 0;
+      width: 78px;
+      max-height: 310px;
+      overflow-y: auto;
+      padding: 4px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--field);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, .45);
+    }
+
+    .help-font-size-options button {
+      width: 100%;
+      padding: 5px 7px;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .help-font-size-options button:hover,
+    .help-font-size-options button.active {
+      background: var(--accent-dark);
+      color: var(--accent);
+    }
+
+    .help-editor-image-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding-left: 10px;
+      border-left: 1px solid var(--border);
+    }
+
+    .help-rich-editor {
+      min-height: 0;
+      flex: 1 1 auto;
+      overflow: auto;
+      padding: 20px 24px;
+      border: 1px solid var(--border);
+      border-radius: 0 0 7px 7px;
+      background: var(--field);
+      color: var(--text);
+      font: 18px/1.65 Inter, ui-sans-serif, system-ui, sans-serif;
+      outline: none;
+      cursor: text;
+    }
+
+    .help-rich-editor:focus {
+      border-color: var(--accent);
+    }
+
+    .help-rich-editor div,
+    .help-rich-editor p,
+    .help-rich-editor li,
+    .help-rich-editor font {
+      line-height: 1.65;
+    }
+
+    .help-rich-editor div,
+    .help-rich-editor p {
+      min-height: 1.65em;
+      margin: 0 0 8px;
+    }
+
+    .help-rich-editor img {
+      cursor: grab;
+    }
+
+    .help-rich-editor img:active {
+      cursor: grabbing;
+    }
+
+    .help-rich-editor img.help-editor-image-selected {
+      outline: 4px solid var(--accent);
+      outline-offset: 3px;
+    }
+
+    .help-image-drop-marker {
+      height: 0;
+      min-height: 0 !important;
+      margin: 12px 0 !important;
+      border-top: 4px solid var(--accent);
+      border-radius: 999px;
+      pointer-events: none;
+    }
+
+    #help-editor-dialog {
+      width: min(1180px, calc(100% - 48px));
+      height: min(900px, calc(100vh - 48px));
+      max-height: calc(100vh - 48px);
+      overflow: hidden;
+    }
+
+    #help-editor-form {
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+      height: 100%;
+      box-sizing: border-box;
+      gap: 14px;
+      padding: 24px 28px;
+    }
+
+    #help-editor-form h2,
+    #help-editor-form label,
+    #help-editor-form .dialog-actions,
+    #help-editor-form .error {
+      margin: 0;
+    }
+
+    .help-editor-content-field {
+      display: flex;
+      min-height: 0;
+      flex-direction: column;
+    }
+
+    .help-editor-content-label {
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+
+    @media (max-width: 800px) {
+      #help-editor-dialog {
+        width: calc(100% - 20px);
+        height: calc(100vh - 20px);
+        max-height: calc(100vh - 20px);
+      }
+
+      #help-editor-form {
+        padding: 16px;
+      }
+
+      .help-editor-image-group {
+        width: 100%;
+        padding-top: 8px;
+        padding-left: 0;
+        border-left: 0;
+        border-top: 1px solid var(--border);
+      }
+    }
+
+    .help-editor-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+
+    .help-editor-actions[hidden] {
+      display: none;
+    }
+
+    .help-empty {
+      color: var(--muted);
+    }
+
     .tab-page {
       display: none;
     }
@@ -219,7 +582,8 @@
     }
 
     input,
-    select {
+    select,
+    textarea {
       display: block;
       width: 100%;
       margin-top: 6px;
@@ -233,9 +597,14 @@
     }
 
     input:focus,
-    select:focus {
+    select:focus,
+    textarea:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 3px #67e8b424;
+    }
+
+    textarea {
+      resize: vertical;
     }
 
     .tolerance-title {
@@ -1470,6 +1839,15 @@
         height: auto;
       }
 
+      .help-workspace {
+        grid-template-columns: 1fr;
+      }
+
+      .help-sidebar {
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+      }
+
       .route-selector {
         max-height: 360px;
         border-right: 0;
@@ -1499,6 +1877,8 @@
         <button class="tab-button" type="button" data-tab="files-page">JSON files</button>
         <button class="tab-button" type="button" data-tab="results-page">Results</button>
         <button class="tab-button" type="button" data-tab="map-page">Map</button>
+        <button class="tab-button help-tab-button" type="button" data-tab="tester-help-page"
+          data-help-open="tester">Help</button>
       </nav>
 
       <section id="runner-page" class="tab-page active">
@@ -1664,12 +2044,40 @@
           </div>
         </div>
       </section>
+
+      <section id="tester-help-page" class="tab-page">
+        <section class="panel help-workspace" data-help-section="tester">
+          <aside class="help-sidebar">
+            <div class="help-sidebar-heading">
+              <h2>Contents</h2>
+              <button class="small-button help-login" type="button">Editor login</button>
+            </div>
+            <div class="help-editor-actions" data-help-editor-controls hidden>
+              <button class="add-button help-new" type="button">New</button>
+              <button class="small-button help-logout" type="button">Log out</button>
+            </div>
+            <div class="help-list"></div>
+          </aside>
+          <article class="help-article">
+            <div class="help-article-heading">
+              <h2 class="help-title">Tester help</h2>
+              <div class="help-editor-actions" data-help-item-controls hidden>
+                <button class="small-button help-edit" type="button">Edit</button>
+                <button class="danger-button help-delete" type="button">Delete</button>
+              </div>
+            </div>
+            <div class="help-content help-empty">No Tester help articles have been created yet.</div>
+          </article>
+        </section>
+      </section>
     </div>
     <div id="optimizer-tool" hidden>
       <nav class="tabs" aria-label="Optimizer sections">
         <button class="tab-button active" type="button" data-optimizer-tab="optimizer-runner-page">Runner</button>
         <button class="tab-button" type="button" data-optimizer-tab="optimizer-files-page">JSON files</button>
         <button class="tab-button" type="button" data-optimizer-tab="optimizer-map-page">Map</button>
+        <button class="tab-button help-tab-button" type="button" data-optimizer-tab="optimizer-help-page"
+          data-help-open="optimizer">Help</button>
       </nav>
       <section id="optimizer-runner-page" class="optimizer-page active">
         <div class="layout">
@@ -1993,6 +2401,32 @@
           </div>
         </section>
       </section>
+
+      <section id="optimizer-help-page" class="optimizer-page" hidden>
+        <section class="panel help-workspace" data-help-section="optimizer">
+          <aside class="help-sidebar">
+            <div class="help-sidebar-heading">
+              <h2>Contents</h2>
+              <button class="small-button help-login" type="button">Editor login</button>
+            </div>
+            <div class="help-editor-actions" data-help-editor-controls hidden>
+              <button class="add-button help-new" type="button">New</button>
+              <button class="small-button help-logout" type="button">Log out</button>
+            </div>
+            <div class="help-list"></div>
+          </aside>
+          <article class="help-article">
+            <div class="help-article-heading">
+              <h2 class="help-title">Optimizer help</h2>
+              <div class="help-editor-actions" data-help-item-controls hidden>
+                <button class="small-button help-edit" type="button">Edit</button>
+                <button class="danger-button help-delete" type="button">Delete</button>
+              </div>
+            </div>
+            <div class="help-content help-empty">No Optimizer help articles have been created yet.</div>
+          </article>
+        </section>
+      </section>
     </div>
   </main>
 
@@ -2309,6 +2743,86 @@
         <button id="delete-confirm" class="danger-button" type="button">Delete permanently</button>
       </div>
     </div>
+  </dialog>
+
+  <dialog id="help-login-dialog" class="profile-dialog">
+    <form id="help-login-form" class="dialog-body upload-form">
+      <h2>Help editor login</h2>
+      <label>Username
+        <input id="help-login-username" type="text" required autocomplete="username">
+      </label>
+      <label>Password
+        <input id="help-login-password" type="password" required autocomplete="current-password">
+      </label>
+      <p id="help-login-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="help-login-cancel" class="small-button" type="button">Cancel</button>
+        <button class="add-button" type="submit">Log in</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="help-editor-dialog">
+    <form id="help-editor-form" class="dialog-body upload-form">
+      <h2 id="help-editor-heading">Create help article</h2>
+      <label>Title
+        <input id="help-editor-title" type="text" maxlength="120" required autocomplete="off">
+      </label>
+      <div class="help-editor-content-field">
+        <span class="help-editor-content-label">Content</span>
+        <div class="help-editor-toolbar" aria-label="Text formatting tools">
+          <button class="small-button" type="button" data-help-command="bold"><strong>Bold</strong></button>
+          <button class="small-button" type="button" data-help-command="underline"><u>Underline</u></button>
+          <span class="help-editor-size-group">
+            <span class="help-editor-size-label">Text size</span>
+            <details id="help-editor-size" class="help-font-size-dropdown">
+              <summary><span id="help-editor-size-value">18</span></summary>
+              <div class="help-font-size-options">
+                <button type="button" data-help-font-size="10">10</button>
+                <button type="button" data-help-font-size="11">11</button>
+                <button type="button" data-help-font-size="12">12</button>
+                <button type="button" data-help-font-size="14">14</button>
+                <button type="button" data-help-font-size="16">16</button>
+                <button type="button" data-help-font-size="18" class="active">18</button>
+                <button type="button" data-help-font-size="20">20</button>
+                <button type="button" data-help-font-size="22">22</button>
+                <button type="button" data-help-font-size="24">24</button>
+                <button type="button" data-help-font-size="26">26</button>
+                <button type="button" data-help-font-size="28">28</button>
+                <button type="button" data-help-font-size="32">32</button>
+                <button type="button" data-help-font-size="36">36</button>
+                <button type="button" data-help-font-size="48">48</button>
+                <button type="button" data-help-font-size="72">72</button>
+              </div>
+            </details>
+          </span>
+          <span class="help-editor-image-group" role="group" aria-label="Image actions">
+            <button id="help-editor-image-button" class="small-button" type="button">Add image</button>
+            <button id="help-editor-remove-image" class="danger-button" type="button" disabled>Remove image</button>
+            <input id="help-editor-image" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+          </span>
+        </div>
+        <div id="help-editor-content" class="help-rich-editor" contenteditable="true" role="textbox"
+          aria-label="Article content" aria-multiline="true"></div>
+      </div>
+      <p id="help-editor-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="help-editor-cancel" class="small-button" type="button">Cancel</button>
+        <button class="add-button" type="submit">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="help-delete-dialog" class="profile-dialog">
+    <form id="help-delete-form" class="dialog-body upload-form">
+      <h2>Delete help article</h2>
+      <p>Delete <strong id="help-delete-title"></strong>?</p>
+      <p id="help-delete-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="help-delete-cancel" class="small-button" type="button">Cancel</button>
+        <button class="danger-button" type="submit">Delete</button>
+      </div>
+    </form>
   </dialog>
 
   <script>
@@ -6346,6 +6860,488 @@
         .then(() => showSelectedOptimizerMergeReport())
         .catch(error => { errorView.textContent = error.message; });
       window.setInterval(pollOptimizerStatus, 500);
+    })();
+
+    (() => {
+      const helpStates = {
+        tester: { items: [], selectedId: null },
+        optimizer: { items: [], selectedId: null },
+      };
+      const workspaces = Object.fromEntries(
+        [...document.querySelectorAll('[data-help-section]')].map(workspace => [
+          workspace.dataset.helpSection, workspace,
+        ]),
+      );
+      let editorToken = '';
+      try { editorToken = sessionStorage.getItem('mathcore-help-editor-token') || ''; }
+      catch (error) { editorToken = ''; }
+      let loginSection = null;
+      let editorSection = null;
+      let editorItemId = null;
+      let deleteSection = null;
+      let deleteItemId = null;
+      let draggedHelpItem = null;
+      let helpImageInsertionRange = null;
+      let selectedHelpEditorImage = null;
+      let helpFormattingRange = null;
+      let draggedHelpEditorImage = null;
+      const helpImageDropMarker = document.createElement('div');
+      helpImageDropMarker.className = 'help-image-drop-marker';
+      helpImageDropMarker.contentEditable = 'false';
+
+      const loginDialog = document.querySelector('#help-login-dialog');
+      const loginForm = document.querySelector('#help-login-form');
+      const loginUsername = document.querySelector('#help-login-username');
+      const loginPassword = document.querySelector('#help-login-password');
+      const loginError = document.querySelector('#help-login-error');
+      const loginCancel = document.querySelector('#help-login-cancel');
+      const editorDialog = document.querySelector('#help-editor-dialog');
+      const editorForm = document.querySelector('#help-editor-form');
+      const editorHeading = document.querySelector('#help-editor-heading');
+      const editorTitle = document.querySelector('#help-editor-title');
+      const editorContent = document.querySelector('#help-editor-content');
+      const editorSize = document.querySelector('#help-editor-size');
+      const editorSizeValue = document.querySelector('#help-editor-size-value');
+      const editorSizeButtons = document.querySelectorAll('[data-help-font-size]');
+      const editorImageButton = document.querySelector('#help-editor-image-button');
+      const editorImage = document.querySelector('#help-editor-image');
+      const editorRemoveImage = document.querySelector('#help-editor-remove-image');
+      const editorError = document.querySelector('#help-editor-error');
+      const editorCancel = document.querySelector('#help-editor-cancel');
+      const deleteDialog = document.querySelector('#help-delete-dialog');
+      const deleteForm = document.querySelector('#help-delete-form');
+      const deleteTitle = document.querySelector('#help-delete-title');
+      const deleteError = document.querySelector('#help-delete-error');
+      const deleteCancel = document.querySelector('#help-delete-cancel');
+
+      function setEditorToken(token) {
+        editorToken = token || '';
+        try {
+          if (editorToken) sessionStorage.setItem('mathcore-help-editor-token', editorToken);
+          else sessionStorage.removeItem('mathcore-help-editor-token');
+        } catch (error) { /* Session storage may be unavailable. */ }
+        Object.keys(helpStates).forEach(renderHelp);
+      }
+
+      function selectedHelpItem(section) {
+        const state = helpStates[section];
+        return state.items.find(item => item.id === state.selectedId) || null;
+      }
+
+      function setEditorPlainText(text) {
+        editorContent.replaceChildren();
+        String(text).split('\n').forEach((line, index) => {
+          if (index) editorContent.append(document.createElement('br'));
+          editorContent.append(document.createTextNode(line));
+        });
+      }
+
+      function setHelpEditorSizeValue(size) {
+        editorSizeValue.textContent = String(size);
+        editorSizeButtons.forEach(button => {
+          button.classList.toggle('active', button.dataset.helpFontSize === String(size));
+        });
+      }
+
+      function currentHelpEditorRange() {
+        const selection = window.getSelection();
+        return selection?.rangeCount && editorContent.contains(selection.anchorNode)
+          ? selection.getRangeAt(0).cloneRange() : null;
+      }
+
+      function restoreHelpEditorRange(range) {
+        if (!range) return;
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+
+      function selectHelpEditorImage(image) {
+        selectedHelpEditorImage?.classList.remove('help-editor-image-selected');
+        selectedHelpEditorImage = image || null;
+        selectedHelpEditorImage?.classList.add('help-editor-image-selected');
+        editorRemoveImage.disabled = !selectedHelpEditorImage;
+      }
+
+      function removeSelectedHelpEditorImage() {
+        if (!selectedHelpEditorImage) return;
+        const image = selectedHelpEditorImage;
+        selectHelpEditorImage(null);
+        image.remove();
+        editorContent.focus();
+      }
+
+      function helpEditorDirectChild(node) {
+        while (node && node.parentNode !== editorContent) node = node.parentNode;
+        return node?.parentNode === editorContent ? node : null;
+      }
+
+      function positionHelpImageDropMarker(event) {
+        if (!draggedHelpEditorImage) return;
+        const target = helpEditorDirectChild(event.target);
+        if (!target || target === helpImageDropMarker) {
+          for (const child of [...editorContent.childNodes]) {
+            if (child === helpImageDropMarker) continue;
+            const childRange = document.createRange();
+            childRange.selectNode(child);
+            const childRectangle = child instanceof Element
+              ? child.getBoundingClientRect() : childRange.getBoundingClientRect();
+            if (event.clientY < childRectangle.top + childRectangle.height / 2) {
+              editorContent.insertBefore(helpImageDropMarker, child);
+              return;
+            }
+          }
+          editorContent.append(helpImageDropMarker);
+          return;
+        }
+        const range = document.createRange();
+        range.selectNode(target);
+        const rectangle = target instanceof Element
+          ? target.getBoundingClientRect() : range.getBoundingClientRect();
+        const placeAfter = event.clientY >= rectangle.top + rectangle.height / 2;
+        editorContent.insertBefore(
+          helpImageDropMarker,
+          placeAfter ? target.nextSibling : target,
+        );
+      }
+
+      function renderHelp(section) {
+        const workspace = workspaces[section];
+        const state = helpStates[section];
+        if (!workspace) return;
+        if (!state.items.some(item => item.id === state.selectedId)) {
+          state.selectedId = state.items[0]?.id || null;
+        }
+        const selected = selectedHelpItem(section);
+        const list = workspace.querySelector('.help-list');
+        list.replaceChildren(...state.items.map(item => {
+          const row = document.createElement('div');
+          row.className = 'help-list-item';
+          row.classList.toggle('active', item.id === state.selectedId);
+          row.dataset.helpItemId = item.id;
+          if (editorToken) {
+            const handle = document.createElement('button');
+            handle.type = 'button';
+            handle.className = 'help-drag-handle';
+            handle.draggable = true;
+            handle.title = 'Drag to reorder';
+            handle.setAttribute('aria-label', `Move ${item.title}`);
+            for (let dot = 0; dot < 6; dot += 1) handle.append(document.createElement('span'));
+            handle.addEventListener('dragstart', event => {
+              draggedHelpItem = { section, id: item.id };
+              event.dataTransfer.effectAllowed = 'move';
+              event.dataTransfer.setData('text/plain', item.id);
+            });
+            handle.addEventListener('dragend', () => {
+              draggedHelpItem = null;
+              list.querySelectorAll('.drag-before, .drag-after').forEach(element => {
+                element.classList.remove('drag-before', 'drag-after');
+              });
+            });
+            row.append(handle);
+            row.addEventListener('dragover', event => {
+              if (draggedHelpItem?.section !== section || draggedHelpItem.id === item.id) return;
+              event.preventDefault();
+              const after = event.clientY >= row.getBoundingClientRect().top + row.offsetHeight / 2;
+              row.classList.toggle('drag-before', !after);
+              row.classList.toggle('drag-after', after);
+              event.dataTransfer.dropEffect = 'move';
+            });
+            row.addEventListener('dragleave', () => {
+              row.classList.remove('drag-before', 'drag-after');
+            });
+            row.addEventListener('drop', async event => {
+              if (draggedHelpItem?.section !== section || draggedHelpItem.id === item.id) return;
+              event.preventDefault();
+              const after = event.clientY >= row.getBoundingClientRect().top + row.offsetHeight / 2;
+              const orderedIds = state.items.map(entry => entry.id).filter(id => id !== draggedHelpItem.id);
+              const targetIndex = orderedIds.indexOf(item.id) + (after ? 1 : 0);
+              orderedIds.splice(targetIndex, 0, draggedHelpItem.id);
+              try {
+                await helpAction('/api/help/reorder', section, {
+                  ordered_ids: orderedIds,
+                  selected_id: state.selectedId,
+                });
+              } catch (error) { window.alert(error.message); }
+              draggedHelpItem = null;
+            });
+          }
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'help-list-button';
+          button.textContent = item.title;
+          button.addEventListener('click', () => {
+            state.selectedId = item.id;
+            renderHelp(section);
+          });
+          row.append(button);
+          return row;
+        }));
+        workspace.querySelector('.help-title').textContent = selected
+          ? selected.title : `${section === 'tester' ? 'Tester' : 'Optimizer'} help`;
+        const content = workspace.querySelector('.help-content');
+        if (selected?.format === 'html') {
+          content.innerHTML = selected.content;
+        } else {
+          content.textContent = selected
+            ? selected.content
+            : `No ${section === 'tester' ? 'Tester' : 'Optimizer'} help articles have been created yet.`;
+        }
+        content.classList.toggle('rich', selected?.format === 'html');
+        content.classList.toggle('help-empty', !selected);
+        workspace.querySelector('.help-login').hidden = Boolean(editorToken);
+        workspace.querySelector('[data-help-editor-controls]').hidden = !editorToken;
+        workspace.querySelector('[data-help-item-controls]').hidden = !editorToken || !selected;
+      }
+
+      async function loadHelp(section) {
+        const data = await fetchJson(`/api/help?${new URLSearchParams({ section })}`);
+        helpStates[section].items = data.items || [];
+        renderHelp(section);
+      }
+
+      async function helpAction(path, section, body = {}) {
+        const data = await fetchJson(path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...body,
+            section,
+            editor_token: editorToken,
+          }),
+        });
+        if (Array.isArray(data.items)) {
+          helpStates[section].items = data.items;
+          if (data.selected_id) helpStates[section].selectedId = data.selected_id;
+          renderHelp(section);
+        }
+        return data;
+      }
+
+      async function validateEditorSession() {
+        if (!editorToken) return;
+        try {
+          await helpAction('/api/help/session', 'tester');
+        } catch (error) {
+          setEditorToken('');
+        }
+      }
+
+      for (const [section, workspace] of Object.entries(workspaces)) {
+        workspace.querySelector('.help-login').addEventListener('click', () => {
+          loginSection = section;
+          loginForm.reset();
+          loginError.textContent = '';
+          loginDialog.showModal();
+          requestAnimationFrame(() => loginUsername.focus());
+        });
+        workspace.querySelector('.help-logout').addEventListener('click', async () => {
+          try { await helpAction('/api/help/logout', section); }
+          catch (error) { /* Local logout still succeeds. */ }
+          setEditorToken('');
+        });
+        workspace.querySelector('.help-new').addEventListener('click', () => {
+          editorSection = section;
+          editorItemId = null;
+          editorForm.reset();
+          editorContent.replaceChildren();
+          selectHelpEditorImage(null);
+          helpFormattingRange = null;
+          setHelpEditorSizeValue(18);
+          editorHeading.textContent = 'Create help article';
+          editorError.textContent = '';
+          editorDialog.showModal();
+          requestAnimationFrame(() => editorTitle.focus());
+        });
+        workspace.querySelector('.help-edit').addEventListener('click', () => {
+          const item = selectedHelpItem(section);
+          if (!item) return;
+          editorSection = section;
+          editorItemId = item.id;
+          editorTitle.value = item.title;
+          if (item.format === 'html') {
+            editorContent.innerHTML = item.content;
+          } else {
+            setEditorPlainText(item.content);
+          }
+          selectHelpEditorImage(null);
+          helpFormattingRange = null;
+          setHelpEditorSizeValue(18);
+          editorHeading.textContent = 'Edit help article';
+          editorError.textContent = '';
+          editorDialog.showModal();
+        });
+        workspace.querySelector('.help-delete').addEventListener('click', () => {
+          const item = selectedHelpItem(section);
+          if (!item) return;
+          deleteSection = section;
+          deleteItemId = item.id;
+          deleteTitle.textContent = item.title;
+          deleteError.textContent = '';
+          deleteDialog.showModal();
+        });
+      }
+
+      loginCancel.addEventListener('click', () => loginDialog.close());
+
+      document.querySelectorAll('[data-help-command]').forEach(button => {
+        button.addEventListener('mousedown', event => event.preventDefault());
+        button.addEventListener('click', () => {
+          editorContent.focus();
+          document.execCommand(button.dataset.helpCommand, false);
+        });
+      });
+      editorContent.addEventListener('mouseup', () => {
+        helpFormattingRange = currentHelpEditorRange();
+      });
+      editorContent.addEventListener('keyup', () => {
+        helpFormattingRange = currentHelpEditorRange();
+      });
+      editorContent.addEventListener('click', event => {
+        const image = event.target instanceof Element ? event.target.closest('img') : null;
+        selectHelpEditorImage(image && editorContent.contains(image) ? image : null);
+      });
+      editorContent.addEventListener('dragstart', event => {
+        const image = event.target instanceof Element ? event.target.closest('img') : null;
+        if (!image || !editorContent.contains(image)) return;
+        draggedHelpEditorImage = image;
+        selectHelpEditorImage(image);
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', 'help-image');
+      });
+      editorContent.addEventListener('dragover', event => {
+        if (!draggedHelpEditorImage) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        positionHelpImageDropMarker(event);
+      });
+      editorContent.addEventListener('drop', event => {
+        if (!draggedHelpEditorImage) return;
+        event.preventDefault();
+        positionHelpImageDropMarker(event);
+        const image = draggedHelpEditorImage;
+        helpImageDropMarker.replaceWith(image);
+        draggedHelpEditorImage = null;
+        selectHelpEditorImage(image);
+        editorContent.focus({ preventScroll: true });
+      });
+      editorContent.addEventListener('dragend', () => {
+        draggedHelpEditorImage = null;
+        helpImageDropMarker.remove();
+      });
+      editorContent.addEventListener('keydown', event => {
+        if (selectedHelpEditorImage && (event.key === 'Delete' || event.key === 'Backspace')) {
+          event.preventDefault();
+          removeSelectedHelpEditorImage();
+        }
+      });
+      editorRemoveImage.addEventListener('click', removeSelectedHelpEditorImage);
+      editorSize.addEventListener('mousedown', () => {
+        helpFormattingRange = currentHelpEditorRange() || helpFormattingRange;
+      });
+      editorSizeButtons.forEach(button => button.addEventListener('mousedown', event => {
+        event.preventDefault();
+      }));
+      editorSizeButtons.forEach(button => button.addEventListener('click', () => {
+        const size = button.dataset.helpFontSize;
+        editorContent.focus();
+        restoreHelpEditorRange(helpFormattingRange);
+        document.execCommand('fontSize', false, '7');
+        editorContent.querySelectorAll('font[size="7"]').forEach(font => {
+          font.removeAttribute('size');
+          font.style.fontSize = `${size}px`;
+        });
+        helpFormattingRange = currentHelpEditorRange();
+        setHelpEditorSizeValue(size);
+        editorSize.open = false;
+      }));
+      document.addEventListener('click', event => {
+        if (!editorSize.contains(event.target)) editorSize.open = false;
+      });
+      editorImageButton.addEventListener('mousedown', event => event.preventDefault());
+      editorImageButton.addEventListener('click', () => {
+        helpImageInsertionRange = currentHelpEditorRange();
+        editorImage.click();
+      });
+      editorImage.addEventListener('change', async () => {
+        const file = editorImage.files?.[0];
+        editorImage.value = '';
+        if (!file) return;
+        editorError.textContent = '';
+        editorImageButton.disabled = true;
+        try {
+          const encoded = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result).split(',', 2)[1] || '');
+            reader.onerror = () => reject(new Error('Could not read the selected image.'));
+            reader.readAsDataURL(file);
+          });
+          const data = await helpAction('/api/help/image/upload', editorSection, {
+            type: file.type,
+            content: encoded,
+          });
+          editorContent.focus();
+          if (helpImageInsertionRange) {
+            restoreHelpEditorRange(helpImageInsertionRange);
+          }
+          document.execCommand('insertImage', false, data.url);
+          const insertedImage = [...editorContent.querySelectorAll('img')].find(
+            image => image.getAttribute('src') === data.url,
+          );
+          selectHelpEditorImage(insertedImage || null);
+        } catch (error) { editorError.textContent = error.message; }
+        finally { editorImageButton.disabled = false; }
+      });
+
+      loginForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        loginError.textContent = '';
+        try {
+          const data = await fetchJson('/api/help/login', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username: loginUsername.value,
+              password: loginPassword.value,
+            }),
+          });
+          setEditorToken(data.editor_token);
+          loginDialog.close();
+          if (loginSection) await loadHelp(loginSection);
+        } catch (error) { loginError.textContent = error.message; }
+      });
+
+      editorCancel.addEventListener('click', () => editorDialog.close());
+      editorForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        editorError.textContent = '';
+        selectHelpEditorImage(null);
+        try {
+          await helpAction('/api/help/save', editorSection, {
+            id: editorItemId,
+            title: editorTitle.value,
+            content: editorContent.innerHTML,
+          });
+          editorDialog.close();
+        } catch (error) { editorError.textContent = error.message; }
+      });
+
+      deleteCancel.addEventListener('click', () => deleteDialog.close());
+      deleteForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        deleteError.textContent = '';
+        try {
+          await helpAction('/api/help/delete', deleteSection, { id: deleteItemId });
+          deleteDialog.close();
+        } catch (error) { deleteError.textContent = error.message; }
+      });
+
+      document.querySelectorAll('[data-help-open]').forEach(button => {
+        button.addEventListener('click', () => {
+          loadHelp(button.dataset.helpOpen).catch(error => window.alert(error.message));
+        });
+      });
+      Object.keys(helpStates).forEach(renderHelp);
+      validateEditorSession();
     })();
 
     document.querySelectorAll('[data-tool]').forEach(button => {
